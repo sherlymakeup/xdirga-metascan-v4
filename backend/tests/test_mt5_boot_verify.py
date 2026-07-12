@@ -1,0 +1,87 @@
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from helpers import default_account, default_symbol_info
+from metascan.mt5.gateway import GatewayBootError, GatewayConfig, Mt5Gateway
+from metascan.mt5.handoff import LatestFrameSlot
+from metascan.mt5.metrics import GatewayMetrics
+from metascan.mt5.testing.fake_mt5 import FakeMt5
+
+
+def _cfg(**over) -> GatewayConfig:
+    base = dict(
+        login=123456,
+        password="secret",
+        server="Exness-Trial",
+        symbol_suffix="m",
+        watchlist_bases=("XAUUSD",),
+        bot_magic=240101,
+        poll_interval_ms=50,
+        require_hedging=True,
+    )
+    base.update(over)
+    return GatewayConfig(**base)
+
+
+async def test_boot_wrong_login_fails() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=999))
+    fake.add_symbol("XAUUSDm", **default_symbol_info("XAUUSDm"))
+    metrics = GatewayMetrics()
+    slot = LatestFrameSlot(metrics)
+    loop = asyncio.get_running_loop()
+    gw = Mt5Gateway(fake, config=_cfg(login=123456), slot=slot, loop=loop, metrics=metrics)
+    gw.start()
+    with pytest.raises(GatewayBootError):
+        gw.wait_boot(timeout=3.0)
+    gw.stop()
+
+
+async def test_boot_missing_symbol_names_base_and_resolved() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=123456))
+    metrics = GatewayMetrics()
+    slot = LatestFrameSlot(metrics)
+    loop = asyncio.get_running_loop()
+    gw = Mt5Gateway(fake, config=_cfg(), slot=slot, loop=loop, metrics=metrics)
+    gw.start()
+    with pytest.raises(GatewayBootError, match=r"XAUUSD.*XAUUSDm|XAUUSDm.*XAUUSD"):
+        gw.wait_boot(timeout=3.0)
+    gw.stop()
+
+
+async def test_boot_hedging_mismatch() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=123456, margin_mode=0))  # not hedging
+    fake.add_symbol("XAUUSDm", **default_symbol_info("XAUUSDm"))
+    fake.set_tick("XAUUSDm", 1.0, 1.1, 1000)
+    metrics = GatewayMetrics()
+    slot = LatestFrameSlot(metrics)
+    loop = asyncio.get_running_loop()
+    gw = Mt5Gateway(fake, config=_cfg(require_hedging=True), slot=slot, loop=loop, metrics=metrics)
+    gw.start()
+    with pytest.raises(GatewayBootError, match="hedg"):
+        gw.wait_boot(timeout=3.0)
+    gw.stop()
+
+
+async def test_boot_success() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=123456))
+    fake.add_symbol("XAUUSDm", **default_symbol_info("XAUUSDm"))
+    fake.set_tick("XAUUSDm", 2300.0, 2300.5, 1000)
+    metrics = GatewayMetrics()
+    slot = LatestFrameSlot(metrics)
+    loop = asyncio.get_running_loop()
+    gw = Mt5Gateway(fake, config=_cfg(), slot=slot, loop=loop, metrics=metrics)
+    gw.start()
+    gw.wait_boot(timeout=3.0)
+    assert gw.boot_error is None
+    frame = await asyncio.wait_for(slot.take(), timeout=2.0)
+    assert frame.frame_id >= 1
+    assert "XAUUSDm" in frame.symbol_meta
+    gw.stop()
