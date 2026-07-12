@@ -1,0 +1,25 @@
+[runtime]
+runtime_name = "XDirga Runtime V4"
+protocol_id = "xdirga-runtime-v4"
+protocol_version = "4.1.0"
+schema_version = "1.1.0"
+broker_provider = "EXNESS"
+broker_environment = "TRIAL"
+execution_semantics = "LIVE"
+symbol_suffix = "m"
+bot_magic = 240101
+
+[runtime.symbols]
+watchlist = ["XAUUSD", "BTCUSD", "EURUSD"]
+
+[paths]
+data_dir = "data"
+journal_db = "data/journal.sqlite"
+
+[safety]
+max_open_positions = 10
+max_volume_per_symbol = 5.0
+max_daily_loss_pct = 3.0
+spread_median_multiple = 3.0
+tick_age_budget_ms = 1000
+poll_cycle_p95_budget_ms = 400
