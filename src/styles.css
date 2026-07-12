@@ -1,0 +1,230 @@
+@import "tailwindcss" source(none);
+@source "../src";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-panel: var(--panel);
+  --color-panel-elevated: var(--panel-elevated);
+  --color-panel-border: var(--panel-border);
+  --color-grid: var(--grid);
+
+  --color-status-ok: var(--status-ok);
+  --color-status-info: var(--status-info);
+  --color-status-warn: var(--status-warn);
+  --color-status-crit: var(--status-crit);
+  --color-status-neutral: var(--status-neutral);
+  --color-status-strategy: var(--status-strategy);
+
+  --color-profit: var(--profit);
+  --color-loss: var(--loss);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+}
+
+/* Dark-first cockpit. Light values kept for accessibility but app defaults to dark. */
+:root {
+  --radius: 4px;
+
+  --background: oklch(0.16 0.012 250);
+  --foreground: oklch(0.94 0.005 250);
+
+  --panel: oklch(0.195 0.013 250);
+  --panel-elevated: oklch(0.225 0.014 250);
+  --panel-border: oklch(0.29 0.015 250);
+  --grid: oklch(0.25 0.013 250);
+
+  --card: oklch(0.195 0.013 250);
+  --card-foreground: oklch(0.94 0.005 250);
+  --popover: oklch(0.21 0.014 250);
+  --popover-foreground: oklch(0.94 0.005 250);
+
+  --primary: oklch(0.72 0.14 220);
+  --primary-foreground: oklch(0.12 0.01 250);
+
+  --secondary: oklch(0.26 0.015 250);
+  --secondary-foreground: oklch(0.94 0.005 250);
+
+  --muted: oklch(0.24 0.013 250);
+  --muted-foreground: oklch(0.66 0.015 250);
+
+  --accent: oklch(0.28 0.02 220);
+  --accent-foreground: oklch(0.94 0.005 250);
+
+  --destructive: oklch(0.62 0.22 25);
+  --destructive-foreground: oklch(0.98 0.005 250);
+
+  --border: oklch(0.28 0.015 250);
+  --input: oklch(0.26 0.015 250);
+  --ring: oklch(0.6 0.14 220);
+
+  --status-ok: oklch(0.74 0.16 150);
+  --status-info: oklch(0.72 0.14 230);
+  --status-warn: oklch(0.8 0.16 75);
+  --status-crit: oklch(0.66 0.22 25);
+  --status-neutral: oklch(0.6 0.015 250);
+  --status-strategy: oklch(0.7 0.16 300);
+
+  --profit: oklch(0.74 0.16 150);
+  --loss: oklch(0.7 0.2 25);
+
+  --chart-1: oklch(0.72 0.14 220);
+  --chart-2: oklch(0.74 0.16 150);
+  --chart-3: oklch(0.8 0.16 75);
+  --chart-4: oklch(0.7 0.2 25);
+  --chart-5: oklch(0.7 0.16 300);
+
+  --sidebar: oklch(0.14 0.011 250);
+  --sidebar-foreground: oklch(0.86 0.008 250);
+  --sidebar-primary: oklch(0.72 0.14 220);
+  --sidebar-primary-foreground: oklch(0.12 0.01 250);
+  --sidebar-accent: oklch(0.22 0.014 250);
+  --sidebar-accent-foreground: oklch(0.96 0.005 250);
+  --sidebar-border: oklch(0.24 0.013 250);
+  --sidebar-ring: oklch(0.6 0.14 220);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@utility panel {
+  background-color: var(--color-panel);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius);
+}
+
+@utility panel-elevated {
+  background-color: var(--color-panel-elevated);
+  border: 1px solid var(--color-panel-border);
+  border-radius: var(--radius);
+}
+
+@utility hairline {
+  border-color: var(--color-panel-border);
+}
+
+@utility num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+@utility scan-grid {
+  background-image: linear-gradient(var(--color-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-grid) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Modern, minimal scrollbars */
+@layer base {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklab, var(--color-foreground) 18%, transparent) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: color-mix(in oklab, var(--color-foreground) 14%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+    transition: background-color 160ms ease;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: color-mix(in oklab, var(--color-foreground) 32%, transparent);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-thumb:active {
+    background-color: color-mix(in oklab, var(--color-primary) 55%, transparent);
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .scroll-fade-x {
+    mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  }
+}
