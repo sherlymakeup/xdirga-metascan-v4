@@ -19,7 +19,7 @@ async def test_history_trades_requires_auth(async_client):
 async def test_history_trades_empty_page(async_client):
     r = await async_client.get(
         "/v4/history/trades",
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 200
     d = r.json()
@@ -34,7 +34,7 @@ async def test_history_trades_limit_param(async_client):
     r = await async_client.get(
         "/v4/history/trades",
         params={"limit": 10},
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 200
 
@@ -44,7 +44,7 @@ async def test_history_trades_limit_max(async_client):
     r = await async_client.get(
         "/v4/history/trades",
         params={"limit": 501},
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     # limit > 500 should be rejected with 422
     assert r.status_code == 422
@@ -55,7 +55,7 @@ async def test_history_trades_cursor_param(async_client):
     r = await async_client.get(
         "/v4/history/trades",
         params={"cursor": "opaque-cursor-value"},
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 200
 
@@ -63,7 +63,7 @@ async def test_history_trades_cursor_param(async_client):
 @pytest.mark.asyncio
 async def test_old_journal_routes_removed(async_client):
     # §10.1 audit: /v4/journal/* routes are not in the authoritative endpoint table
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     for path in ("/v4/journal/session", "/v4/journal/calendars", "/v4/journal/trades"):
         r = await async_client.get(path, headers=hdrs)
         assert r.status_code == 404, f"expected 404 for {path}, got {r.status_code}"

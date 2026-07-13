@@ -29,7 +29,7 @@ async def test_internal_command_is_indistinguishable_from_absent_command(async_c
             conn.commit(),
         )
     )
-    headers = {"Authorization": "Bearer test-token-123"}
+    headers = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     internal = await async_client.get("/v4/commands/internal", headers=headers)
     missing = await async_client.get("/v4/commands/missing", headers=headers)
     assert internal.status_code == missing.status_code == 404
@@ -41,7 +41,7 @@ async def test_unknown_transport_kind_rejects_before_journal_write(async_client,
     response = await async_client.post(
         "/v4/commands",
         json={"kind": "internal.entry", "idempotencyKey": "unknown-kind"},
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert response.status_code == 422
     assert journal_db.run_on_writer(lambda conn: conn.execute("SELECT COUNT(*) FROM commands").fetchone()[0]) == 0

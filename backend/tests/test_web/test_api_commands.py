@@ -31,7 +31,7 @@ async def test_submit_command_accepted(async_client, journal_db):
     r = await async_client.post(
         "/v4/commands",
         json=payload,
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 200
     d = r.json()
@@ -58,7 +58,7 @@ async def test_submit_command_idempotency(async_client):
         "idempotencyKey": "idem-2",
         "correlationId": "corr-2",
     }
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
 
     r1 = await async_client.post("/v4/commands", json=payload, headers=hdrs)
     assert r1.status_code == 200
@@ -73,7 +73,7 @@ async def test_submit_command_idempotency(async_client):
 
 @pytest.mark.asyncio
 async def test_get_command_by_id(async_client):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     payload = {
         "kind": "runtime.reconcile",
         "idempotencyKey": "idem-get-1",
@@ -96,7 +96,7 @@ async def test_get_command_by_id(async_client):
 async def test_get_command_not_found(async_client):
     r = await async_client.get(
         "/v4/commands/nonexistent-id",
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 404
 
@@ -107,7 +107,7 @@ async def test_submit_command_no_mt5_execution(async_client):
     r = await async_client.post(
         "/v4/commands",
         json={"kind": "position.closeAll", "idempotencyKey": "idem-safety-1"},
-        headers={"Authorization": "Bearer test-token-123"},
+        headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 200
     assert r.json()["state"] == "PREPARED"

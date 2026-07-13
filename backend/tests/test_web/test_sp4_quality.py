@@ -86,7 +86,7 @@ async def test_auth_sentinel_not_raw_token(async_client):
     assert _AUTH_OK == "AUTHENTICATED"
     # End-to-end: handshake returns 200 with correct token
     r = await async_client.get(
-        "/v4/handshake", headers={"Authorization": "Bearer test-token-123"}
+        "/v4/handshake", headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     )
     assert r.status_code == 200
 
@@ -110,7 +110,7 @@ def test_auth_hmac_used():
 def test_auth_returns_sentinel_not_token():
     import metascan.web.security as sec_mod
     # _AUTH_OK sentinel is a non-secret string
-    assert sec_mod._AUTH_OK != "test-token-123"
+    assert sec_mod._AUTH_OK != "FAKE-TEST-TOKEN-NOT-REAL"
     assert sec_mod._AUTH_OK != ""
 
 
@@ -173,7 +173,7 @@ async def test_no_internal_error_for_large_replay(event_bus, journal_db):
 
 @pytest.mark.asyncio
 async def test_command_transition_sequence_equals_event_sequence(async_client, journal_db):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     r = await async_client.post(
         "/v4/commands",
         json={"kind": "runtime.pause", "idempotencyKey": "idem-seq-check"},
@@ -203,7 +203,7 @@ async def test_command_transition_sequence_equals_event_sequence(async_client, j
 
 @pytest.mark.asyncio
 async def test_command_transition_sequence_nonzero(async_client, journal_db):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     r = await async_client.post(
         "/v4/commands",
         json={"kind": "runtime.start", "idempotencyKey": "idem-seq-nonzero"},
@@ -228,7 +228,7 @@ async def test_command_transition_sequence_nonzero(async_client, journal_db):
 
 @pytest.mark.asyncio
 async def test_history_trades_returns_journal_data(async_client, event_bus, journal_db):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
 
     # Publish two trade.closed events into the journal
     await event_bus.publish(_make_trade_env(event_bus, 1, "trade-aaa"))
@@ -245,7 +245,7 @@ async def test_history_trades_returns_journal_data(async_client, event_bus, jour
 
 @pytest.mark.asyncio
 async def test_history_trades_cursor_pagination(async_client, event_bus, journal_db):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
 
     for i in range(3):
         await event_bus.publish(_make_trade_env(event_bus, i + 1, f"trade-pg-{i}"))
@@ -273,7 +273,7 @@ async def test_history_trades_cursor_pagination(async_client, event_bus, journal
 
 @pytest.mark.asyncio
 async def test_history_trades_no_non_trade_events(async_client, event_bus, journal_db):
-    hdrs = {"Authorization": "Bearer test-token-123"}
+    hdrs = {"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     # Publish non-trade event
     await event_bus.publish(_make_env(event_bus, 1))
     await event_bus.publish(_make_trade_env(event_bus, 2, "trade-only"))

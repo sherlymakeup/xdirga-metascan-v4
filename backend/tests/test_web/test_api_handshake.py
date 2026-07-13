@@ -17,7 +17,7 @@ async def test_handshake_requires_auth(async_client):
 @pytest.mark.asyncio
 async def test_handshake_contract_shape(async_client):
     r = await async_client.get(
-        "/v4/handshake", headers={"Authorization": "Bearer test-token-123"}
+        "/v4/handshake", headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     )
     assert r.status_code == 200
     d = r.json()
@@ -48,7 +48,7 @@ async def test_handshake_contract_shape(async_client):
 
 @pytest.mark.asyncio
 async def test_handshake_token_via_query(async_client):
-    r = await async_client.get("/v4/handshake", params={"token": "test-token-123"})
+    r = await async_client.get("/v4/handshake", params={"token": "FAKE-TEST-TOKEN-NOT-REAL"})
     assert r.status_code == 200
 
 

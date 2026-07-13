@@ -56,15 +56,16 @@ def test_env_loads_credentials_only(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     env = tmp_path / ".env"
+    # FAKE fixture — never a real account.
     env.write_text(
-        "MT5_LOGIN=123456\nMT5_PASSWORD=s3cret!\nMT5_SERVER=Exness-Trial\nAPI_TOKEN=tok_abc\n",
+        "MT5_LOGIN=123456\nMT5_PASSWORD=FAKE-TEST-PASSWORD-NOT-REAL\nMT5_SERVER=Exness-Trial\nAPI_TOKEN=FAKE-TEST-TOKEN-NOT-REAL\n",
         encoding="utf-8",
     )
     loaded = load_config(config_path=cfg, env_path=env)
     assert loaded.credentials.mt5_login == "123456"
-    assert loaded.credentials.mt5_password == "s3cret!"
+    assert loaded.credentials.mt5_password == "FAKE-TEST-PASSWORD-NOT-REAL"
     assert loaded.credentials.mt5_server == "Exness-Trial"
-    assert loaded.credentials.api_token == "tok_abc"
+    assert loaded.credentials.api_token == "FAKE-TEST-TOKEN-NOT-REAL"
 
 
 @pytest.mark.parametrize(

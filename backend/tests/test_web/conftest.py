@@ -27,7 +27,7 @@ def test_config() -> AppConfig:
             broker_environment="TRIAL",
             execution_semantics="LIVE",
         ),
-        credentials=Credentials(api_token="test-token-123"),
+        credentials=Credentials(api_token="FAKE-TEST-TOKEN-NOT-REAL"),
     )
 
 

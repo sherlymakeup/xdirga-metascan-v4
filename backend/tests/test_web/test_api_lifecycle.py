@@ -79,7 +79,7 @@ def test_global_exception_handler_shape():
 @pytest.mark.asyncio
 async def test_capabilities_endpoint(async_client):
     r = await async_client.get(
-        "/v4/capabilities", headers={"Authorization": "Bearer test-token-123"}
+        "/v4/capabilities", headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     )
     assert r.status_code == 200
     d = r.json()
@@ -98,7 +98,7 @@ async def test_capabilities_endpoint(async_client):
 async def test_handshake_capabilities_revision(async_client):
     # RuntimeHandshake.capabilitiesRevision — integer per runtime-types.ts
     r = await async_client.get(
-        "/v4/handshake", headers={"Authorization": "Bearer test-token-123"}
+        "/v4/handshake", headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     )
     assert r.status_code == 200
     d = r.json()

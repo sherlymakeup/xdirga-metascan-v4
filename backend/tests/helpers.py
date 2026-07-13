@@ -83,6 +83,7 @@ def make_position_row(
 
 
 def default_account(**over: Any) -> dict[str, Any]:
+    # FAKE fixture — never a real account.
     base = dict(
         login=123456,
         balance=10_000.0,

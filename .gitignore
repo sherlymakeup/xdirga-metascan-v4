@@ -32,7 +32,16 @@ dist-ssr
 *.sw?
 
 # Backend (Python)
-backend/.env
-backend/.venv
+.env*
+backend/.venv/
 __pycache__/
+.pytest_cache/
+*.pyc
 *.sqlite
+*.sqlite3
+*.db
+
+# MetaTrader terminal runtime data
+**/MetaQuotes/Terminal/
+**/MT5/Terminal/
+**/terminal_data/

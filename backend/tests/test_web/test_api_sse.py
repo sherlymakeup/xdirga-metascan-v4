@@ -58,7 +58,7 @@ async def test_snapshot_requires_auth(async_client):
 @pytest.mark.asyncio
 async def test_snapshot_shape(async_client):
     r = await async_client.get(
-        "/v4/snapshot", headers={"Authorization": "Bearer test-token-123"}
+        "/v4/snapshot", headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"}
     )
     assert r.status_code == 200
     d = r.json()
@@ -112,7 +112,7 @@ def test_log_token_redaction_in_args():
 async def test_stream_boot_id_mismatch_rejected(async_client):
     r = await async_client.get(
         "/v4/events/stream",
-        params={"bootId": "wrong-boot-id", "sequence": 0, "token": "test-token-123"},
+        params={"bootId": "wrong-boot-id", "sequence": 0, "token": "FAKE-TEST-TOKEN-NOT-REAL"},
     )
     assert r.status_code == 400
     assert r.json()["detail"] == "BOOT_MISMATCH"
@@ -128,7 +128,7 @@ async def test_stream_200_text_event_stream(test_config, event_bus, journal_db):
     app.dependency_overrides[get_journal] = lambda: journal_db
 
     boot_id = event_bus.boot_id
-    qs = f"token=test-token-123&bootId={boot_id}&sequence=0".encode()
+    qs = f"token=FAKE-TEST-TOKEN-NOT-REAL&bootId={boot_id}&sequence=0".encode()
 
     scope = {
         "type": "http",
