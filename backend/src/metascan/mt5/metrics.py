@@ -74,3 +74,19 @@ class GatewayMetrics:
         with self._lock:
             copied = list(self.poll_cycle_ms)
         return _percentile(copied, 95)
+
+    def note_cycle_overrun(self) -> None:
+        """Locked increment for cycle_overruns — prevents lost-update under concurrent callers."""
+        with self._lock:
+            self.cycle_overruns += 1
+
+    def snapshot(self) -> dict:
+        """Return a consistent point-in-time copy of all scalar metrics under lock."""
+        with self._lock:
+            return {
+                "cycle_overruns": self.cycle_overruns,
+                "handoff_overruns": self.handoff_overruns,
+                "handoff_dropped_count": self.handoff_dropped_count,
+                "handoff_overrun_active": self.handoff_overrun_active,
+                "poll_cycle_ms_len": len(self.poll_cycle_ms),
+            }

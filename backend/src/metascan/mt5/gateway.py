@@ -194,7 +194,7 @@ class Mt5Gateway:
                     self._handoff(frame)
                     self._metrics.record_cycle_ms(frame.cycle_duration_ms)
                     if frame.cycle_duration_ms > interval:
-                        self._metrics.cycle_overruns += 1
+                        self._metrics.note_cycle_overrun()
                 except RuntimeError as rexc:
                     if "Event loop is closed" in str(rexc):
                         logger.warning("Event loop closed; stopping gateway poll")
