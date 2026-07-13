@@ -11,6 +11,7 @@ class FakeMt5:
         self._initialized = False
         self._account: SimpleNamespace | None = None
         self._positions: dict[int, SimpleNamespace] = {}
+        self._orders: dict[int, SimpleNamespace] = {}
         self._symbols: dict[str, SimpleNamespace] = {}
         self._ticks: dict[str, SimpleNamespace] = {}
         self._last_error: tuple[int, str] = (0, "OK")
@@ -21,6 +22,13 @@ class FakeMt5:
         self.call_log: list[str] = []
         self._ticks_frozen = False
         self._terminal: SimpleNamespace | None = SimpleNamespace(connected=True, build=4000)
+        self._order_check_results: list[SimpleNamespace | None | BaseException] = []
+        self._order_send_results: list[SimpleNamespace | None | BaseException | tuple[float, SimpleNamespace | None | BaseException] | tuple[str, SimpleNamespace]] = []
+        self._history_deals: list[SimpleNamespace] = []
+        self.order_check_requests: list[dict[str, Any]] = []
+        self.order_send_requests: list[dict[str, Any]] = []
+        self._order_send_block_s: float | None = None
+        self._order_send_disconnect: bool = False
 
     def _touch(self, name: str) -> bool:
         self.call_log.append(name)
@@ -61,6 +69,33 @@ class FakeMt5:
         self._last_error = (0, "OK")
         return tuple(self._positions.values())
 
+    def orders_get(self, *args: Any, **kwargs: Any) -> tuple[SimpleNamespace, ...] | None:
+        if not self._touch("orders_get"):
+            return None
+        self._last_error = (0, "OK")
+        return tuple(self._orders.values())
+
+    def history_deals_get(self, *args: Any, **kwargs: Any) -> tuple[SimpleNamespace, ...]:
+        self._touch("history_deals_get")
+        return tuple(self._history_deals)
+
+    def order_check(self, request: Any) -> SimpleNamespace | None:
+        self.order_check_requests.append(dict(request))
+        if not self._touch("order_check"):
+            return None
+        if self._order_check_results:
+            outcome = self._order_check_results.pop(0)
+            if isinstance(outcome, BaseException):
+                raise outcome
+            return outcome
+        return SimpleNamespace(retcode=0, comment="ok")
+
+    def script_order_check(self, *, retcode: int = 0, comment: str = "ok") -> None:
+        self._order_check_results.append(SimpleNamespace(retcode=retcode, comment=comment))
+
+    def script_order_check_none(self) -> None:
+        self._order_check_results.append(None)
+
     def symbol_select(self, symbol: str, enable: bool) -> bool:
         if not self._touch("symbol_select"):
             return False
@@ -100,6 +135,11 @@ class FakeMt5:
             d.setdefault("time_msc", 0)
             d.setdefault("identifier", d["ticket"])
             self._positions[int(d["ticket"])] = SimpleNamespace(**d)
+
+    def set_orders(self, rows: list[dict[str, Any]]) -> None:
+        self._orders.clear()
+        for row in rows:
+            self._orders[int(row["ticket"])] = SimpleNamespace(**row)
 
     def remove_position(self, ticket: int) -> None:
         self._positions.pop(ticket, None)
@@ -146,3 +186,54 @@ class FakeMt5:
 
     def set_last_error(self, code: int, msg: str) -> None:
         self._last_error = (code, msg)
+
+    def order_send(self, request: Any) -> SimpleNamespace | None:
+        self.order_send_requests.append(dict(request))
+        if not self._touch("order_send"):
+            return None
+        if self._order_send_disconnect:
+            self._order_send_disconnect = False
+            raise ConnectionError("broker disconnect mid-call")
+        outcome: SimpleNamespace | None | BaseException = SimpleNamespace(retcode=10009, order=99999, deal=99999, comment="done")
+        if self._order_send_block_s is not None:
+            time.sleep(self._order_send_block_s)
+            self._order_send_block_s = None
+        if self._order_send_results:
+            scripted = self._order_send_results.pop(0)
+            if isinstance(scripted, tuple):
+                delay, outcome = scripted
+                if delay == "sent_unknown":
+                    self._history_deals.append(SimpleNamespace(order=outcome.deal, position_id=request.get("position", 0)))
+                    raise ConnectionError("sent unknown")
+                time.sleep(delay)
+            else:
+                outcome = scripted
+        if isinstance(outcome, BaseException):
+            raise outcome
+        if outcome is not None and getattr(outcome, "deal", 0):
+            self._history_deals.append(SimpleNamespace(order=outcome.deal, position_id=request.get("position", 0)))
+        return outcome
+
+    def script_order_send(self, *, retcode: int = 10009, order: int = 99999, deal: int = 0, comment: str = "done") -> None:
+        self._order_send_results.append(SimpleNamespace(retcode=retcode, order=order, deal=deal, comment=comment))
+
+    def script_order_send_none(self) -> None:
+        self._order_send_results.append(None)
+
+    def script_order_send_exception(self, exc: BaseException) -> None:
+        self._order_send_results.append(exc)
+
+    def script_order_send_slow(self, seconds: float, *, retcode: int = 10009, order: int = 99999, deal: int = 0) -> None:
+        self._order_send_results.append((seconds, SimpleNamespace(retcode=retcode, order=order, deal=deal, comment="done")))
+
+    def script_order_send_sent_unknown(self, *, order: int, deal: int) -> None:
+        self._order_send_results.append(("sent_unknown", SimpleNamespace(retcode=10009, order=order, deal=deal, comment="done")))
+
+    def set_order_send_result(self, ticket: int, retcode: int) -> None:
+        self.script_order_send(order=ticket, retcode=retcode)
+
+    def block_order_send(self, seconds: float) -> None:
+        self._order_send_block_s = seconds
+
+    def fail_order_send_disconnect(self) -> None:
+        self._order_send_disconnect = True

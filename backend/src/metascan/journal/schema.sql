@@ -40,8 +40,26 @@ CREATE TABLE IF NOT EXISTS commands (
   message            TEXT NULL,
   error_code         TEXT NULL,
   created_at         TEXT NOT NULL,
-  updated_at         TEXT NOT NULL,
-  record_json        TEXT NOT NULL
+  updated_at         TEXT    NOT NULL,
+  request_json       TEXT    NOT NULL DEFAULT '{}',
+  origin             TEXT    NOT NULL CHECK(origin IN ('TRANSPORT','INTERNAL')),
+  execution_kind     TEXT    NULL,
+  record_json        TEXT    NULL,
+  internal_record_json TEXT  NULL,
+  CHECK (
+    (origin = 'TRANSPORT' AND execution_kind IS NULL AND record_json IS NOT NULL AND internal_record_json IS NULL)
+    OR
+    (origin = 'INTERNAL' AND execution_kind IS NOT NULL AND record_json IS NULL AND internal_record_json IS NOT NULL)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS entry_intents (
+  symbol          TEXT PRIMARY KEY,
+  command_id      TEXT NOT NULL,
+  state           TEXT NOT NULL,
+  order_ticket    INTEGER NULL,
+  deal_ticket     INTEGER NULL,
+  position_ticket INTEGER NULL
 );
 
 CREATE TABLE IF NOT EXISTS command_transitions (
@@ -69,3 +87,8 @@ BEFORE DELETE ON command_transitions
 BEGIN
   SELECT RAISE(ABORT, 'command_transitions is append-only: DELETE forbidden');
 END;
+
+CREATE TABLE IF NOT EXISTS runtime_state (
+  key   TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

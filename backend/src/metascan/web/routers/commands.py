@@ -5,7 +5,7 @@ from __future__ import annotations
 #
 # Idempotency: identical idempotencyKey within retention window returns the
 # SAME commandId and current state — no new command created.
-# SP4 constraint: no MT5 execution occurs here.
+# SP5: command starts as PREPARED, emits command.created, enqueues to pipeline.
 #
 # Transition sequence fix: the CommandTransitionRecord.sequence MUST equal the
 # stamped event sequence. Both are assigned inside EventBus._publish_lock by
@@ -22,10 +22,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from metascan.bus.event_bus import EventBus
+from metascan.contract.commands import RUNTIME_COMMAND_KINDS
 from metascan.contract.models import RuntimeCommandStatus, RuntimeEventEnvelope
-from metascan.journal.commands import get_command_by_idempotency_key
+from metascan.journal.commands import IdempotencyConflict
 from metascan.journal.db import Journal
-from metascan.web.dependencies import get_bus, get_journal
+from metascan.pipeline.command_pipeline import CommandPipeline
+from metascan.pipeline.command_queue import CommandQueueFull
+from metascan.pipeline.request import CommandRequest as PipelineCommandRequest
+from metascan.web.dependencies import get_bus, get_journal, get_pipeline
 from metascan.web.security import verify_token
 
 router = APIRouter()
@@ -54,74 +58,20 @@ async def submit_command(
     payload: CommandRequest,
     journal: Journal = Depends(get_journal),
     bus: EventBus = Depends(get_bus),
+    pipeline: CommandPipeline = Depends(get_pipeline),
     _token: str = Depends(verify_token),
 ) -> dict:
-    now = _now()
-    correlation_id = payload.correlationId or str(uuid.uuid4())
-    client_request_id = payload.clientRequestId or str(uuid.uuid4())
-
-    # Idempotency check — read-only under writer thread, no stamp yet
-    existing = journal.run_on_writer(
-        lambda conn: get_command_by_idempotency_key(conn, payload.idempotencyKey)
-    )
-    if existing is not None:
-        state_str = existing.state.value if hasattr(existing.state, "value") else str(existing.state)
-        return {
-            "commandId": existing.command_id,
-            "state": state_str,
-            "receivedAt": existing.created_at,
-            "idempotencyKey": payload.idempotencyKey,
-        }
-
-    command_id = str(uuid.uuid4())
-
-    status = RuntimeCommandStatus(
-        command_id=command_id,
-        client_request_id=client_request_id,
-        correlation_id=correlation_id,
-        idempotency_key=payload.idempotencyKey,
-        kind=payload.kind,
-        target_id=payload.targetId,
-        state="ACCEPTED",
-        created_at=now,
-        updated_at=now,
-    )
-
-    # Envelope sequence/revision are pre-stamp placeholders; publish_command_event
-    # stamps the real values inside _publish_lock before committing to DB.
-    # DO NOT pre-build CommandTransitionRecord here — publish_command_event builds
-    # it from stamped.sequence inside the lock, ensuring transition.sequence ==
-    # event.sequence in the journal (item 4 invariant).
-    envelope = RuntimeEventEnvelope(
-        event_id=str(uuid.uuid4()),
-        type="command.accepted",
-        runtime_id="xdirga",
-        boot_id=bus.boot_id,
-        sequence=0,   # placeholder — overwritten by _stamp inside lock
-        revision=0,   # placeholder — overwritten by _stamp inside lock
-        occurred_at=now,
-        emitted_at=now,
-        received_at=now,
-        severity="INFO",
-        source="LOCAL_RUNTIME",
-        correlation_id=correlation_id,
-        command_id=command_id,
-        payload={"commandId": command_id, "state": "ACCEPTED"},
-    )
-
-    # publish_command_event: under _publish_lock stamps envelope, builds
-    # transition from stamped.sequence, commits bundle atomically, then fanouts.
-    # This is the only path that writes to DB — no prior commit exists.
-    await bus.publish_command_event(
-        envelope, status, from_state=None, mutates_state=False
-    )
-
-    return {
-        "commandId": command_id,
-        "state": "ACCEPTED",
-        "receivedAt": now,
-        "idempotencyKey": payload.idempotencyKey,
-    }
+    try:
+        request = PipelineCommandRequest.from_ingress(payload.model_dump(by_alias=True, exclude_none=True))
+        if request.kind not in RUNTIME_COMMAND_KINDS:
+            raise HTTPException(status_code=422, detail={"error": "Unknown command kind", "code": "VALIDATION_FAILED"})
+        status = await pipeline.submit_transport(request, idempotency_key=payload.idempotencyKey, correlation_id=payload.correlationId)
+    except IdempotencyConflict:
+        raise HTTPException(status_code=409, detail={"error": "idempotency key reused with different request", "code": "IDEMPOTENCY_CONFLICT"}) from None
+    except CommandQueueFull:
+        raise HTTPException(status_code=503, detail={"error": "Command queue full", "code": "QUEUE_FULL"}) from None
+    state = status.state.value if hasattr(status.state, "value") else str(status.state)
+    return {"commandId": status.command_id, "state": state, "receivedAt": status.created_at, "idempotencyKey": payload.idempotencyKey}
 
 
 @router.get("/commands/{command_id}")
@@ -132,7 +82,7 @@ async def get_command(
 ) -> dict:
     def _fetch(conn):
         row = conn.execute(
-            "SELECT record_json FROM commands WHERE command_id = ?",
+            "SELECT record_json FROM commands WHERE command_id = ? AND origin = 'TRANSPORT'",
             (command_id,),
         ).fetchone()
         if row is None:

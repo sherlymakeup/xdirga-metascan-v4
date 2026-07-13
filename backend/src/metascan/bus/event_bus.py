@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import uuid
 from dataclasses import dataclass
 from typing import AsyncIterator
 
 from metascan.contract.models import RuntimeCommandStatus, RuntimeEventEnvelope
+from metascan.pipeline.request import InternalCommandRecord
 from metascan.journal.commands import CommandTransitionRecord, build_transition_json
 from metascan.journal.db import Journal
 
@@ -275,6 +277,49 @@ class EventBus:
             self._fanout(stamped)
             return stamped
 
+    async def publish_command_created(
+        self,
+        envelope: RuntimeEventEnvelope,
+        status: RuntimeCommandStatus | InternalCommandRecord,
+        request_json: str,
+        *,
+        origin: str = "TRANSPORT",
+        execution_kind: str | None = None,
+        internal_record_json: str | None = None,
+    ) -> tuple[RuntimeCommandStatus | InternalCommandRecord, bool]:
+        if self._closed or not self._started:
+            raise EventBusClosed("event bus closed")
+        async with self._publish_lock:
+            stamped, prev_seq, prev_rev = self._stamp(envelope, mutates_state=False)
+            transition = CommandTransitionRecord(
+                boot_id=stamped.boot_id, sequence=stamped.sequence, command_id=status.command_id,
+                from_state=None, to_state="PREPARED", ts=status.updated_at,
+                transition_json=build_transition_json(command_id=status.command_id, from_state=None, to_state="PREPARED", sequence=stamped.sequence),
+            )
+            loop = asyncio.get_running_loop()
+            try:
+                saved, created = await loop.run_in_executor(
+                    self._journal.executor,
+                    functools.partial(
+                        self._journal.try_insert_command_create,
+                        status,
+                        transition,
+                        stamped,
+                        request_json,
+                        origin=origin,
+                        execution_kind=execution_kind,
+                        internal_record_json=internal_record_json,
+                    ),
+                )
+            except Exception:
+                self._restore(prev_seq, prev_rev)
+                raise
+            if not created:
+                self._restore(prev_seq, prev_rev)
+                return saved, False
+            self._fanout(stamped)
+            return saved, True
+
     async def publish_command_event(
         self,
         envelope: RuntimeEventEnvelope,
@@ -313,6 +358,53 @@ class EventBus:
                     envelope=stamped,
                     command_upsert=status,
                     transition=transition,
+                )
+
+            try:
+                await loop.run_in_executor(self._journal.executor, _bundle)
+            except Exception:
+                self._restore(prev_seq, prev_rev)
+                raise
+            self._fanout(stamped)
+            return stamped
+
+    async def publish_internal_command_event(
+        self,
+        envelope: RuntimeEventEnvelope,
+        record: InternalCommandRecord,
+        *,
+        from_state: str | None,
+        mutates_state: bool = True,
+    ) -> RuntimeEventEnvelope:
+        if self._closed or not self._started:
+            raise EventBusClosed("event bus closed")
+        async with self._publish_lock:
+            stamped, prev_seq, prev_rev = self._stamp(
+                envelope, mutates_state=mutates_state
+            )
+            to_state = str(record.state)
+            transition = CommandTransitionRecord(
+                boot_id=stamped.boot_id,
+                sequence=stamped.sequence,
+                command_id=record.command_id,
+                from_state=from_state,
+                to_state=to_state,
+                ts=record.updated_at,
+                transition_json=build_transition_json(
+                    command_id=record.command_id,
+                    from_state=from_state,
+                    to_state=to_state,
+                    sequence=stamped.sequence,
+                ),
+            )
+            loop = asyncio.get_running_loop()
+
+            def _bundle() -> None:
+                self._journal.commit_internal_bundle(
+                    envelope=stamped,
+                    record=record,
+                    transition=transition,
+                    internal_record_json=record.internal_json(),
                 )
 
             try:

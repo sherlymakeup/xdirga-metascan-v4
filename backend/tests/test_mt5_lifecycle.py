@@ -5,15 +5,20 @@ from pathlib import Path
 import pytest
 
 
-def test_gateway_source_has_no_order_send() -> None:
-    root = Path("src/metascan/mt5")
+def test_mt5_mutation_seam_is_gateway_only() -> None:
+    root = Path("src/metascan")
     for path in root.rglob("*.py"):
-        if "testing" in path.parts:
+        if "testing" in path.parts or path.name == "gateway.py":
             continue
         text = path.read_text(encoding="utf-8")
-        assert "order_send" not in text, path
-        assert "order_check" not in text, path
-        assert "history_deals_get" not in text, path
+        assert "._mt5" not in text, path
+        assert ".order_send(" not in text, path
+        assert ".order_check(" not in text, path
+
+    gateway = (root / "mt5" / "gateway.py").read_text(encoding="utf-8")
+    assert "# SP3 forbade order_send entirely (mutations out of scope);\n# superseded in SP5 by the seam invariant below." in gateway
+    assert "def _drain_commands" in gateway
+    assert "def _mutation_on_gateway_thread" in gateway
 
 
 async def test_stop_calls_shutdown() -> None:

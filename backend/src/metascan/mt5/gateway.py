@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+# SP3 forbade order_send entirely (mutations out of scope);
+# superseded in SP5 by the seam invariant below.
 import asyncio
+import concurrent.futures
 import logging
+import queue
 import threading
 from dataclasses import dataclass
 from typing import Any, Callable, Sequence
@@ -67,10 +71,20 @@ class Mt5Gateway:
         self._frame_id = 0
         self._symbol_meta: dict[str, SymbolMeta] = {}
         self._resolved_symbols: list[str] = []
+        self._cmd_queue: queue.Queue[tuple[Callable, concurrent.futures.Future]] = queue.Queue()
 
     @property
     def boot_error(self) -> BaseException | None:
         return self._boot_error
+
+    @property
+    def thread_id(self) -> int | None:
+        return self._thread.ident if self._thread is not None else None
+
+    def submit_command(self, fn: Callable[[], Any]) -> concurrent.futures.Future:
+        fut: concurrent.futures.Future = concurrent.futures.Future()
+        self._cmd_queue.put((fn, fut))
+        return fut
 
     def start(self) -> None:
         if self._thread is not None:
@@ -151,6 +165,8 @@ class Mt5Gateway:
                 digits=int(info.digits),
                 point=float(info.point),
                 trade_contract_size=float(info.trade_contract_size),
+                tick_size=float(getattr(info, "trade_tick_size", getattr(info, "tick_size", 0.0)) or 0.0),
+                tick_value_loss=float(getattr(info, "trade_tick_value_loss", 0.0) or 0.0),
                 volume_min=float(info.volume_min),
                 volume_max=float(info.volume_max),
                 volume_step=float(info.volume_step),
@@ -160,6 +176,8 @@ class Mt5Gateway:
                 trade_mode=trade_mode,
                 visible=bool(getattr(info, "visible", True)),
             )
+            if sm.tick_size <= 0 or sm.tick_value_loss <= 0:
+                raise GatewayBootError(f"invalid tick metadata base={base} resolved={resolved}")
             meta[resolved] = sm
             resolved_list.append(resolved)
         self._symbol_meta = meta
@@ -170,6 +188,7 @@ class Mt5Gateway:
         interval_s = interval / 1000.0
         try:
             while not self._stop.is_set():
+                self._drain_commands()
                 t0 = self._mono.monotonic()
                 try:
                     frame = self._one_cycle(t0)
@@ -304,3 +323,122 @@ class Mt5Gateway:
 
     def _handoff(self, frame: BrokerStateFrame) -> None:
         self._loop.call_soon_threadsafe(self._slot.offer, frame)
+
+    def _drain_commands(self) -> None:
+        while True:
+            try:
+                fn, fut = self._cmd_queue.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                fut.set_result(fn())
+            except BaseException as exc:
+                fut.set_exception(exc)
+
+    def _constant(self, name: str, fallback: int) -> int:
+        return int(getattr(self._mt5, name, fallback))
+
+    def order_check(self, request: dict[str, Any]) -> concurrent.futures.Future:
+        return self.submit_command(lambda: self._mt5.order_check(request))
+
+    def mutation(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], *, reason: str = "MANUAL") -> Any:
+        return self.submit_command(lambda: self._mutation_on_gateway_thread(command_id, kind, target_id, request, reason))
+
+    def success_retcodes(self) -> frozenset[int]:
+        return frozenset({self._constant("TRADE_RETCODE_DONE", 10009), self._constant("TRADE_RETCODE_DONE_PARTIAL", 10010)})
+
+    def sweep_facts(self) -> concurrent.futures.Future:
+        return self.submit_command(self._sweep_facts_on_gateway_thread)
+
+    def _sweep_facts_on_gateway_thread(self) -> dict[str, Any]:
+        orders = self._mt5.orders_get()
+        positions = self._mt5.positions_get()
+        return {
+            "orders": tuple({"ticket": int(row.ticket), "symbol": str(row.symbol), "magic": int(row.magic), "volume": float(getattr(row, "volume_current", getattr(row, "volume", 0.0))), "orderType": int(row.type)} for row in (orders or ())),
+            "positions": tuple({"ticket": int(p.ticket), "symbol": str(p.symbol), "magic": int(p.magic), "volume": float(p.volume), "type": int(p.type)} for p in (positions or ())),
+        }
+
+    def verify(self, target_id: str | None) -> concurrent.futures.Future:
+        return self.submit_command(lambda: self._verify_on_gateway_thread(target_id))
+
+    def _verify_on_gateway_thread(self, target_id: str | None) -> dict[str, Any]:
+        positions = self._mt5.positions_get()
+        ticket = int(target_id) if target_id and target_id.isdigit() else None
+        found = any(int(p.ticket) == ticket for p in positions or ()) if ticket else None
+        return {"positionExists": found, "positions": positions or (), "deals": self._mt5.history_deals_get() if hasattr(self._mt5, "history_deals_get") else ()}
+
+    def _mutation_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], reason: str) -> Any:
+        mt5 = self._mt5
+        deal = self._constant("TRADE_ACTION_DEAL", 1)
+        sltp = self._constant("TRADE_ACTION_SLTP", 6)
+        remove = self._constant("TRADE_ACTION_REMOVE", 8)
+        buy = self._constant("ORDER_TYPE_BUY", 0)
+        sell = self._constant("ORDER_TYPE_SELL", 1)
+        positions = {int(p.ticket): p for p in (mt5.positions_get() or ())}
+        if kind in {"position.open", "order.open", "INTERNAL_ENTRY_MARKET"}:
+            symbol = str(request["symbol"])
+            meta = self._symbol_meta[symbol]
+            side = str(request["side"]).upper()
+            if side not in {"BUY", "SELL"}:
+                raise ValueError("INVALID_SIDE")
+            tick = mt5.symbol_info_tick(symbol)
+            req = {"action": deal, "symbol": symbol, "volume": float(request["volume"]), "type": buy if side == "BUY" else sell, "price": float(tick.ask if side == "BUY" else tick.bid), "magic": self._config.bot_magic, "deviation": int(request.get("deviation", 20)), "type_filling": meta.filling_mode, "comment": f"{command_id} CALIBRATE-SP6"}
+            if request.get("stop_loss") is not None:
+                req["sl"] = float(request["stop_loss"])
+            if request.get("take_profit") is not None:
+                req["tp"] = float(request["take_profit"])
+            return self._checked_send(mt5, req, allow_unavailable_check=False)
+        if kind in {"position.close", "position.closePartial"}:
+            if target_id is None or int(target_id) not in positions:
+                raise ValueError("POSITION_NOT_FOUND")
+            p = positions[int(target_id)]
+            meta = self._symbol_meta[p.symbol]
+            tick = mt5.symbol_info_tick(p.symbol)
+            volume = float(p.volume) if kind == "position.close" else self._normalize_partial(float(request.get("volume", 0)), float(p.volume), meta)
+            req = {"action": deal, "position": int(p.ticket), "symbol": p.symbol, "volume": volume, "type": sell if int(p.type) == buy else buy, "price": float(tick.bid if int(p.type) == buy else tick.ask), "magic": self._config.bot_magic, "deviation": int(request.get("deviation", 20)), "type_filling": meta.filling_mode, "comment": command_id}
+            return self._checked_send(mt5, req, allow_unavailable_check=True)
+        if kind == "position.modifyProtection":
+            if target_id is None or int(target_id) not in positions:
+                raise ValueError("POSITION_NOT_FOUND")
+            p = positions[int(target_id)]
+            req = {"action": sltp, "position": int(p.ticket), "symbol": p.symbol, "sl": float(request["stop_loss"]) if request.get("stop_loss") is not None else float(p.sl), "tp": float(request["take_profit"]) if request.get("take_profit") is not None else float(p.tp), "magic": self._config.bot_magic, "comment": command_id}
+            return self._checked_send(mt5, req, allow_unavailable_check=True)
+        if kind == "order.cancel":
+            if target_id is None:
+                raise ValueError("ORDER_NOT_FOUND")
+            return self._checked_send(mt5, {"action": remove, "order": int(target_id), "magic": self._config.bot_magic, "comment": command_id}, allow_unavailable_check=True)
+        raise ValueError("UNSUPPORTED_COMMAND")
+
+    def _checked_send(self, mt5: Any, request: dict[str, Any], *, allow_unavailable_check: bool) -> Any:
+        checked = mt5.order_check(request)
+        if checked is None:
+            if allow_unavailable_check:
+                return mt5.order_send(request)
+            raise ValueError("ORDER_CHECK_UNAVAILABLE")
+        if getattr(checked, "retcode", 0) not in {0, *self.success_retcodes()}:
+            return checked
+        return mt5.order_send(request)
+
+    @staticmethod
+    def _normalize_partial(requested: float, current: float, meta: SymbolMeta) -> float:
+        from decimal import Decimal, InvalidOperation
+        try:
+            r = Decimal(str(requested))
+            c = Decimal(str(current))
+            vstep = Decimal(str(meta.volume_step))
+            vmin = Decimal(str(meta.volume_min))
+        except (InvalidOperation, ValueError):
+            raise ValueError("PARTIAL_CLOSE_INVALID_VOLUME")
+        if r <= 0:
+            raise ValueError("PARTIAL_CLOSE_INVALID_VOLUME")
+        if r < vmin:
+            raise ValueError("PARTIAL_CLOSE_BELOW_MIN_VOLUME")
+        floor = (r // vstep) * vstep
+        if floor < vmin:
+            raise ValueError("PARTIAL_CLOSE_BELOW_MIN_VOLUME")
+        remainder = c - floor
+        if remainder > 0 and remainder < vmin:
+            raise ValueError("PARTIAL_CLOSE_DUST_REMAINDER")
+        if floor >= c:
+            raise ValueError("PARTIAL_CLOSE_EXCEEDS_CURRENT")
+        return float(floor)

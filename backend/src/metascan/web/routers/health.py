@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends
 
 from metascan.bus.event_bus import EventBus
 from metascan.journal.db import Journal
-from metascan.web.dependencies import get_bus, get_journal
+from metascan.web.dependencies import get_bus, get_journal, get_pipeline
 from metascan.web.sse import active_sse_connections
 
 router = APIRouter()
@@ -33,6 +33,7 @@ async def get_health(
 @router.get("/ops/metrics")
 async def get_metrics(
     bus: EventBus = Depends(get_bus),
+    pipeline = Depends(get_pipeline),
 ) -> dict:
     return {
         "eventBusQueueSize": sum(
@@ -40,6 +41,6 @@ async def get_metrics(
         ),
         "mt5PollLatencyMs": 0.0,
         "sqliteCommitLatencyMs": 0.0,
-        # Real counter incremented/decremented by SseHandoff.generate_stream
+        "mutationInFlight": pipeline.mutation_in_flight,
         "activeSseConnections": active_sse_connections.count,
     }

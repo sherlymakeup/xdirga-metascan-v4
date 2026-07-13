@@ -61,6 +61,8 @@ class SymbolMeta:
     digits: int
     point: float
     trade_contract_size: float
+    tick_size: float
+    tick_value_loss: float
     volume_min: float
     volume_max: float
     volume_step: float

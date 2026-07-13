@@ -185,7 +185,7 @@ async def test_command_transition_sequence_equals_event_sequence(async_client, j
     # Query both tables and assert sequence equality
     def _check(conn):
         ev_row = conn.execute(
-            "SELECT sequence FROM events WHERE type = 'command.accepted' ORDER BY sequence DESC LIMIT 1"
+            "SELECT sequence FROM events WHERE type = 'command.created' ORDER BY sequence DESC LIMIT 1"
         ).fetchone()
         tr_row = conn.execute(
             "SELECT sequence FROM command_transitions WHERE command_id = ?",

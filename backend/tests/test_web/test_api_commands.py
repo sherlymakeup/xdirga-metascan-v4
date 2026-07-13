@@ -11,6 +11,7 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_submit_command_requires_auth(async_client):
+    # HANDOFF.md §10: REST endpoints require Authorization: Bearer.
     r = await async_client.post("/v4/commands", json={
         "kind": "runtime.pause",
         "idempotencyKey": "idem-auth-test",
@@ -34,8 +35,8 @@ async def test_submit_command_accepted(async_client, journal_db):
     )
     assert r.status_code == 200
     d = r.json()
-    # §10.4 CommandAccepted shape
-    assert d["state"] == "ACCEPTED"
+    # §10.4 CommandCreated shape (SP5: initial state is PREPARED)
+    assert d["state"] == "PREPARED"
     assert "commandId" in d
     assert d["idempotencyKey"] == "idem-1"
     assert "receivedAt" in d
@@ -47,7 +48,7 @@ async def test_submit_command_accepted(async_client, journal_db):
         ).fetchone()
     )
     assert row is not None
-    assert row[0] == "ACCEPTED"
+    assert row[0] == "PREPARED"
 
 
 @pytest.mark.asyncio
@@ -86,7 +87,7 @@ async def test_get_command_by_id(async_client):
     assert r2.status_code == 200
     d = r2.json()
     assert d["commandId"] == cmd_id
-    assert d["state"] == "ACCEPTED"
+    assert d["state"] == "PREPARED"
     assert d["kind"] == "runtime.reconcile"
     assert d["idempotencyKey"] == "idem-get-1"
 
@@ -102,11 +103,11 @@ async def test_get_command_not_found(async_client):
 
 @pytest.mark.asyncio
 async def test_submit_command_no_mt5_execution(async_client):
-    # SP4: submission must not mutate MT5 state; just journaled as ACCEPTED
+    # SP5: submission must not mutate MT5 state; just journaled as PREPARED
     r = await async_client.post(
         "/v4/commands",
         json={"kind": "position.closeAll", "idempotencyKey": "idem-safety-1"},
         headers={"Authorization": "Bearer test-token-123"},
     )
     assert r.status_code == 200
-    assert r.json()["state"] == "ACCEPTED"
+    assert r.json()["state"] == "PREPARED"

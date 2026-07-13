@@ -104,6 +104,8 @@ def default_symbol_info(name: str, **over: Any) -> dict[str, Any]:
         digits=2,
         point=0.01,
         trade_contract_size=100.0,
+        trade_tick_size=0.01,
+        trade_tick_value_loss=1.0,
         volume_min=0.01,
         volume_max=100.0,
         volume_step=0.01,
