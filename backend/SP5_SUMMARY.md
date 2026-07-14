@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 5 blocker corrections implemented; verification evidence below.
+Status: Round 6 temporal verifier race correction implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -97,6 +97,23 @@ Precedence: `VALIDATION_FAILED` → `RISK_FRACTION_EXCEEDS_MAX` → `ENTRY_EXPOS
 | R12 temporal startup validation | `risk_config.py` rejects nonpositive timeout/interval and interval greater than timeout | `test_sp5_r5_risk_config_validation.py` |
 | Full verification budget | `command_pipeline.py` uses a monotonic deadline, configured temporal spacing, immediate positive resolution, and defers negative terminalization until deadline | `test_sp5_r5_temporal_verdict.py`; `test_sp5_r5_temporal_interval.py` |
 
+## Round 6 temporal verifier race
+
+Root cause: `_temporal_verify()` used `verify_poll_interval_ms` both as poll cadence and as the maximum wait for each gateway verification future. Equal-cadence calls timed out while still running, their results were discarded, and replacement calls accumulated on the serialized gateway queue.
+
+Production fix: `command_pipeline.py` now uses one monotonic overall deadline, anchors each next poll start to the previous poll start, keeps at most one verification future active, waits for that future using the remaining overall budget, consumes boundary-completed results before timeout resolution, and never submits a replacement while a prior call remains active. `fake_mt5.py` adds recurring call-delay control for deterministic production-path race tests.
+
+| Requirement | Exact test |
+|---|---|
+| Equal 50 ms cadence race | `test_sp5_r6_temporal_verifier_race.py::test_a_equal_cadence_50ms_delay_converges` |
+| Slow call exceeds poll interval | `test_sp5_r6_temporal_verifier_race.py::test_b_duration_exceeds_interval_still_converges` |
+| Maximum one in-flight verification | `test_sp5_r6_temporal_verifier_race.py::test_c_max_one_in_flight_no_buildup` |
+| Verification-call start cadence | `test_sp5_r6_temporal_verifier_race.py::test_d_call_start_spacing_honors_interval` |
+| Near-deadline result precedence | `test_sp5_r6_temporal_verifier_race.py::test_e_near_deadline_completion_consumed` |
+| Existing delayed/recovery matrix | `test_sp5_temporal_verification_budget.py`; `test_sp5_r5_temporal_verdict.py`; `test_sp5_r5_recovery_rehydration.py`; `test_sp5_durable_entry_intent.py` |
+
+Stability suite results: run 1 `26 passed`; run 2 `26 passed`; run 3 `26 passed`; run 4 `26 passed`; run 5 `26 passed`.
+
 ## RCA and mechanical prevention
 
 The approved design was previously summarized instead of traced mechanically through production boundaries. Tests injected verdict dictionaries that the real gateway could not produce, and direct gate tests missed the internal pipeline dataclass transition crash. Prevention now requires pipeline-level rejection tests, arbiter tests fed by the real gateway fact producer, a pytest collection hook rejecting empty/assertion-free SP5 modules, exact locked numbering here, and full-suite verification before the single checkpoint.
@@ -119,7 +136,7 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `378 passed, 1 existing Starlette/httpx deprecation warning`.
+- Full suite: `383 passed, 1 existing Starlette/httpx deprecation warning`.
 - Round 5 targeted blocker suite: `21 passed`.
 - Schema hash suite: `5 passed`.
 - Compile check: `uv run python -m compileall -q src tests` passed.

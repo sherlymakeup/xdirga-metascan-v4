@@ -29,11 +29,14 @@ class FakeMt5:
         self.order_send_requests: list[dict[str, Any]] = []
         self._order_send_block_s: float | None = None
         self._order_send_disconnect: bool = False
+        self._block_seconds_recurring: dict[str, float] = {}
 
     def _touch(self, name: str) -> bool:
         self.call_log.append(name)
         self.call_threads.append((name, threading.get_ident()))
         sec = self._block_seconds.pop(name, None)
+        if sec is None:
+            sec = self._block_seconds_recurring.get(name)
         if sec:
             time.sleep(sec)
         left = self._fail_counts.get(name, 0)
