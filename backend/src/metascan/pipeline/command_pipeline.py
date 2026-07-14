@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import datetime
+import inspect
 import json
 import logging
 import uuid
@@ -401,13 +402,17 @@ class CommandPipeline:
         self._release(scope, target, payload)
 
     def _verification_future(self, command_id: str, kind: str, target: str | None, payload: dict[str, Any]) -> Any:
+        verify = self._gateway.verify
         try:
-            return self._gateway.verify(command_id, kind, target, payload)
-        except TypeError:
-            return self._gateway.verify(target)
+            parameters = tuple(inspect.signature(verify).parameters.values())
+        except (TypeError, ValueError):
+            parameters = ()
+        if len(parameters) == 1 and parameters[0].kind in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+            return verify(target)
+        return verify(command_id, kind, target, payload)
 
     async def _temporal_verify(self, command_id: str, kind: str, target: str | None, payload: dict[str, Any], *, timeout: float, poll_interval_ms: int = 50) -> tuple[bool | None, str | None, dict[str, Any], int, list[float]]:
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         deadline = loop.time() + timeout
         interval_s = poll_interval_ms / 1000.0
         polls = 0
@@ -418,70 +423,74 @@ class CommandPipeline:
         active: concurrent.futures.Future | None = None
         wrapped: asyncio.Future | None = None
 
-        async def _await(remaining: float) -> dict[str, Any] | None:
-            try:
-                return await asyncio.wait_for(asyncio.shield(wrapped), timeout=remaining)
-            except Exception:
-                return None
+        def drain(future: concurrent.futures.Future | asyncio.Future) -> None:
+            if not future.cancelled():
+                future.exception()
 
         while True:
             now = loop.time()
-            remaining = deadline - now
-
-            if remaining <= 0:
-                if active is not None:
-                    result = None
-                    if active.done():
-                        try:
-                            result = active.result()
-                        except Exception:
-                            pass
-                    else:
-                        result = await _await(0)
-                        if result is None and active.done():
-                            try:
-                                result = active.result()
-                            except Exception:
-                                pass
-                    if result is not None:
-                        executed, vreason = verdict(kind, result)
-                        if executed is not None:
-                            return executed, vreason, result, polls, call_times
-                    if not active.done():
-                        active.add_done_callback(lambda future: future.exception() if not future.cancelled() else None)
-                if last_executed is not None:
-                    return last_executed, last_reason, last_result, polls, call_times
-                return None, None, {}, polls, call_times
-
-            if active is not None:
-                result = await _await(remaining)
-                if result is None and active.done():
-                    try:
-                        result = active.result()
-                    except Exception:
-                        pass
-                if result is not None:
-                    executed, vreason = verdict(kind, result)
-                    last_executed, last_reason, last_result = executed, vreason, result
-                    if executed is True:
-                        return executed, vreason, result, polls, call_times
-                    if executed is False and loop.time() >= deadline:
-                        return executed, vreason, result, polls, call_times
+            if active is None:
+                next_start = call_times[-1] + interval_s if call_times else now
+                if next_start >= deadline:
+                    remaining = deadline - now
+                    if remaining > 0:
+                        await asyncio.sleep(remaining)
+                    break
+                if next_start > now:
+                    await asyncio.sleep(next_start - now)
+                now = loop.time()
+                if now >= deadline:
+                    break
+                call_times.append(now)
+                polls += 1
+                try:
+                    active = self._verification_future(command_id, kind, target, payload)
+                    wrapped = asyncio.wrap_future(active)
+                except Exception as exc:
+                    logger.warning("Temporal verification submission failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
                     active = None
                     wrapped = None
+                    continue
+
+            assert active is not None and wrapped is not None
+            waiting = asyncio.shield(wrapped)
+            try:
+                result = await asyncio.wait_for(waiting, timeout=max(0, deadline - loop.time()))
+            except asyncio.CancelledError:
+                active.add_done_callback(drain)
+                wrapped.add_done_callback(drain)
+                waiting.add_done_callback(drain)
+                raise
+            except asyncio.TimeoutError:
+                if not active.done():
+                    active.add_done_callback(drain)
+                    waiting.add_done_callback(drain)
+                    break
+                try:
+                    result = active.result()
+                except Exception as exc:
+                    logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
+                    active = None
+                    wrapped = None
+                    break
+            except Exception as exc:
+                logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
+                active = None
+                wrapped = None
                 continue
 
-            next_start = call_times[-1] + interval_s if call_times else now
-            wait = next_start - now
-            if wait > 0:
-                await asyncio.sleep(wait)
-            now = loop.time()
-            if now >= deadline:
-                continue
-            call_times.append(now)
-            active = self._verification_future(command_id, kind, target, payload)
-            polls += 1
-            wrapped = asyncio.wrap_future(active)
+            executed, vreason = verdict(kind, result)
+            last_executed, last_reason, last_result = executed, vreason, result
+            active = None
+            wrapped = None
+            if executed is True:
+                return executed, vreason, result, polls, call_times
+            if loop.time() >= deadline:
+                break
+
+        if last_executed is not None:
+            return last_executed, last_reason, last_result, polls, call_times
+        return None, None, {}, polls, call_times
 
     async def _unknown_internal(self, record: InternalCommandRecord, kind: str, scope: str, target: str | None, reason: str, payload: dict[str, Any] | None = None) -> None:
         await self._transition_internal(record, "EXECUTION_UNKNOWN", reason=reason, event_type="command.execution_unknown")

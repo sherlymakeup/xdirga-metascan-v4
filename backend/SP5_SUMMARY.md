@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 6 temporal verifier race correction implemented; verification evidence below.
+Status: Round 7 final temporal verifier hardening implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -114,6 +114,25 @@ Production fix: `command_pipeline.py` now uses one monotonic overall deadline, a
 
 Stability suite results: run 1 `26 passed`; run 2 `26 passed`; run 3 `26 passed`; run 4 `26 passed`; run 5 `26 passed`.
 
+## Round 7 final verifier state machine
+
+Round 6 residual root cause: completed verification futures that raised were consumed as `None` but remained active. The loop repeatedly awaited the same failed future, prevented retries, and could spin until deadline.
+
+Final behavior: the verifier explicitly separates idle, pending, successful completion, and exceptional completion. Async and synchronous transient failures are consumed, logged, cleared, then retried at monotonic cadence while budget remains. One source future remains active at most; slow calls use remaining overall budget; boundary-completed results are inspected before timeout fallback; cancellation propagates and installs safe source/wrapper exception drains without retry.
+
+| Production behavior | Exact tests |
+|---|---|
+| One async exception then convergence | `test_sp5_r7_temporal_verifier_exceptions.py::test_a_completed_exception_is_consumed_once_then_success_retries_at_cadence` |
+| Multiple exceptions, heartbeat responsiveness, one in-flight | `test_sp5_r7_temporal_verifier_exceptions.py::test_b_multiple_async_exceptions_then_success_without_spin` |
+| Exceptions through full budget without call storm | `test_sp5_r7_temporal_verifier_exceptions.py::test_c_async_exceptions_until_deadline_use_full_budget_without_call_storm` |
+| Synchronous submission failure and implementation `TypeError` retry | `test_sp5_r7_temporal_verifier_exceptions.py::test_d_synchronous_verify_submission_failure_retries_at_cadence`; `test_d_type_error_from_modern_verify_is_one_submission_then_cadence_retry` |
+| Boundary-completed result precedence | `test_sp5_r7_temporal_verifier_exceptions.py::test_e_same_turn_completed_result_is_inspected_before_timeout` |
+| Pending-timeout exception lifecycle | `test_sp5_r7_temporal_verifier_exceptions.py::test_e_pending_timeout_drains_late_source_and_wrapper_exception` |
+| Cancellation propagation and exception drain | `test_sp5_r7_temporal_verifier_exceptions.py::test_f_cancellation_propagates_without_retry_and_production_drains_exception` |
+| Durable ambiguity lock and alert | `test_sp5_r7_temporal_verifier_exceptions.py::test_g_exception_ambiguity_retains_lock_and_emits_alert_on_hot_path` |
+
+Round 7 stability: runs 1–10 each `11 passed`. Combined temporal/recovery stability: runs 1–10 each `37 passed`.
+
 ## RCA and mechanical prevention
 
 The approved design was previously summarized instead of traced mechanically through production boundaries. Tests injected verdict dictionaries that the real gateway could not produce, and direct gate tests missed the internal pipeline dataclass transition crash. Prevention now requires pipeline-level rejection tests, arbiter tests fed by the real gateway fact producer, a pytest collection hook rejecting empty/assertion-free SP5 modules, exact locked numbering here, and full-suite verification before the single checkpoint.
@@ -136,7 +155,10 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `383 passed, 1 existing Starlette/httpx deprecation warning`.
+- Full suite: `394 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 7 tests: `11 passed`; 10 consecutive runs each `11 passed`.
+- Combined temporal/recovery stability: 10 consecutive runs each `37 passed`.
+- Delayed-convergence matrix: `24 passed`.
 - Round 5 targeted blocker suite: `21 passed`.
 - Schema hash suite: `5 passed`.
 - Compile check: `uv run python -m compileall -q src tests` passed.
