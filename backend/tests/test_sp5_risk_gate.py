@@ -92,7 +92,7 @@ def test_hard_sl_sizing_calibration_fixtures(symbol: str, bid: float, ask: float
 def test_sizing_rejects_invalid_metadata(bad: float | None) -> None:
     facts = RuntimeFactsProvider.current(runtime_state="READY", entries_enabled=True, safety_mode_active=False, trading_halt=False, account={"equity": 10_000.0}, account_age_ms=0, positions=(), ticks={"EURUSD": {"bid": 1.1, "ask": 1.1, "age_ms": 0}}, symbol_meta={"EURUSD": {"tick_size": bad, "tick_value_loss": 1.0, "volume_min": 0.01, "volume_max": 1.0, "volume_step": 0.01, "age_ms": 0}}).snapshot()
 
-    assert run_gates(InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095), facts, RiskConfig(allowed_symbols=("EURUSD",))).reason == "INVALID_VOLUME"
+    assert run_gates(InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095), facts, RiskConfig(allowed_symbols=("EURUSD",))).reason == "SIZING_METADATA_INVALID"
 
 
 # SP5_DESIGN.md:61 and :64 require a failed gate-6 entry to release its symbol scope.
@@ -102,6 +102,22 @@ def test_exposure_rejection_releases_symbol_scope() -> None:
 
     assert run_gates(request, provider.snapshot(), RiskConfig(allowed_symbols=("EURUSD",), max_positions=0), provider).reason == "ENTRY_EXPOSURE_LIMIT"
     assert run_gates(request, provider.snapshot(), RiskConfig(allowed_symbols=("EURUSD",)), provider).passed
+
+
+@pytest.mark.parametrize(("config", "facts_update", "expected"), [
+    (RiskConfig(allowed_symbols=("EURUSD",), max_risk_fraction=0.001), {}, "RISK_FRACTION_EXCEEDS_MAX"),
+    (RiskConfig(allowed_symbols=("EURUSD",), max_positions=0), {}, "ENTRY_EXPOSURE_LIMIT"),
+    (RiskConfig(allowed_symbols=("EURUSD",), max_daily_loss=0.02), {"day_start_balance": 10000.0, "daily_realized_pnl": -200.0}, "DAILY_LOSS_LIMIT_REACHED"),
+])
+def test_gate6_reason_is_cause_specific(config: RiskConfig, facts_update: dict, expected: str) -> None:
+    provider = RuntimeFactsProvider.current(runtime_state="READY", entries_enabled=True, safety_mode_active=False, trading_halt=False, account={"equity": 10_000.0}, account_age_ms=0, positions=(), ticks={"EURUSD": {"bid": 1.1, "ask": 1.1, "age_ms": 0}}, symbol_meta={"EURUSD": {"tick_size": 0.00001, "tick_value_loss": 1.0, "volume_min": 0.01, "volume_max": 1.0, "volume_step": 0.01, "age_ms": 0}}, **facts_update)
+    request = InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095, riskFraction=0.005)
+    assert run_gates(request, provider.snapshot(), config).reason == expected
+
+
+def test_nonpositive_risk_fraction_fails_validation_first() -> None:
+    facts = RuntimeFactsProvider.current(runtime_state="READY", entries_enabled=True, safety_mode_active=False, trading_halt=False, account={"equity": 10_000.0}, account_age_ms=0, positions=(), ticks={"EURUSD": {"bid": 1.1, "ask": 1.1, "age_ms": 0}}, symbol_meta={}).snapshot()
+    assert run_gates(InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095, riskFraction=0), facts, RiskConfig(allowed_symbols=("EURUSD",))).reason == "VALIDATION_FAILED"
 
 
 def test_runtime_facts_provider_requires_explicit_current_facts() -> None:

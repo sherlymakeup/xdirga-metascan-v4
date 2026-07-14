@@ -73,7 +73,8 @@ def closed_trade_payload(
     correlation_id: str | None = None,
 ) -> dict:
     from metascan.pipeline.outcome_handler import CLOSE_WHITELIST
-    assert exit_reason in CLOSE_WHITELIST, f"exitReason {exit_reason!r} not in {CLOSE_WHITELIST!r}"
+    if exit_reason not in CLOSE_WHITELIST:
+        raise ValueError(f"exitReason {exit_reason!r} not in {CLOSE_WHITELIST!r}")
     pid = position_id_for(row.ticket)
     gross = row.profit
     commission = row.commission

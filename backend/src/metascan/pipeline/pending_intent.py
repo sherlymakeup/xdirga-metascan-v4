@@ -39,8 +39,8 @@ class PendingIntentRegistry:
     def register_close(self, ticket: int, command_id: str, *, exit_reason: str = "MANUAL", correlation_id: str | None = None) -> None:
         self._intents[ticket] = _Intent(command_id, "close", exit_reason=exit_reason, correlation_id=correlation_id)
 
-    def register_partial(self, ticket: int, volume: float, command_id: str) -> None:
-        self._intents[ticket] = _Intent(command_id, "partial", volume)
+    def register_partial(self, ticket: int, volume: float, command_id: str, *, correlation_id: str | None = None) -> None:
+        self._intents[ticket] = _Intent(command_id, "partial", volume, correlation_id=correlation_id)
 
     def register_modify(self, ticket: int, command_id: str) -> None:
         self._intents[ticket] = _Intent(command_id, "modify")

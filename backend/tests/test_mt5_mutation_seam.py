@@ -10,6 +10,7 @@ from metascan.mt5.gateway import GatewayConfig, GatewayBootError, Mt5Gateway
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
 from metascan.mt5.testing.fake_mt5 import FakeMt5
+from metascan.pipeline.command_pipeline import verdict
 
 
 def make_gateway(fake: FakeMt5) -> Mt5Gateway:
@@ -101,6 +102,58 @@ async def test_gateway_maps_close_partial_protection_and_cancel_hygienically() -
     assert partial["price"] == 2300.0
     assert protection == {"action": 6, "position": 10, "symbol": "XAUUSDm", "sl": 2295.0, "tp": 2320.0, "magic": 7, "comment": "sltp"}
     assert cancel == {"action": 8, "order": 22, "magic": 7, "comment": "cancel"}
+
+
+async def test_gateway_produces_partial_verification_facts_from_broker_state() -> None:
+    fake = FakeMt5()
+    fake.set_positions([{"ticket": 10, "symbol": "XAUUSDm", "magic": 7, "volume": 0.10, "price_open": 2300.0, "price_current": 2300.0, "sl": 2290.0, "tp": 2320.0, "profit": 0.0, "swap": 0.0, "type": 0, "time_msc": 0, "identifier": 10, "comment": ""}])
+    gateway = make_gateway(fake)
+    gateway.start()
+    gateway.wait_boot(3.0)
+    try:
+        await asyncio.wrap_future(gateway.mutation("partial-facts", "position.closePartial", "10", {"volume": 0.03}))
+        fake.set_positions([{"ticket": 10, "symbol": "XAUUSDm", "magic": 7, "volume": 0.07, "price_open": 2300.0, "price_current": 2300.0, "sl": 2290.0, "tp": 2320.0, "profit": 0.0, "swap": 0.0, "type": 0, "time_msc": 0, "identifier": 10, "comment": ""}])
+        facts = await asyncio.wrap_future(gateway.verify("partial-facts", "position.closePartial", "10", {}))
+    finally:
+        gateway.stop()
+    assert facts["pre_volume"] == 0.10
+    assert facts["post_volume"] == 0.07
+    assert facts["partial_executed"] is True
+    assert verdict("position.closePartial", facts) == (True, None)
+
+
+async def test_gateway_produces_modify_verification_facts_from_broker_state() -> None:
+    fake = FakeMt5()
+    fake.set_positions([{"ticket": 10, "symbol": "XAUUSDm", "magic": 7, "volume": 0.10, "price_open": 2300.0, "price_current": 2300.0, "sl": 2290.0, "tp": 2320.0, "profit": 0.0, "swap": 0.0, "type": 0, "time_msc": 0, "identifier": 10, "comment": ""}])
+    gateway = make_gateway(fake)
+    gateway.start()
+    gateway.wait_boot(3.0)
+    try:
+        await asyncio.wrap_future(gateway.mutation("modify-facts", "position.modifyProtection", "10", {"stop_loss": 2295.0}))
+        fake.set_positions([{"ticket": 10, "symbol": "XAUUSDm", "magic": 7, "volume": 0.10, "price_open": 2300.0, "price_current": 2300.0, "sl": 2295.0, "tp": 2320.0, "profit": 0.0, "swap": 0.0, "type": 0, "time_msc": 0, "identifier": 10, "comment": ""}])
+        facts = await asyncio.wrap_future(gateway.verify("modify-facts", "position.modifyProtection", "10", {}))
+    finally:
+        gateway.stop()
+    assert facts["modify_executed"] is True
+    assert verdict("position.modifyProtection", facts) == (True, None)
+
+
+async def test_gateway_produces_entry_verification_facts_from_correlated_position() -> None:
+    fake = FakeMt5()
+    gateway = make_gateway(fake)
+    gateway.start()
+    gateway.wait_boot(3.0)
+    try:
+        await asyncio.wrap_future(gateway.mutation("entry-facts", "INTERNAL_ENTRY_MARKET", None, {"symbol": "XAUUSDm", "side": "BUY", "volume": 0.1, "stop_loss": 2290.0}))
+        fake.set_positions([{"ticket": 77, "symbol": "XAUUSDm", "magic": 7, "volume": 0.10, "price_open": 2300.5, "price_current": 2300.5, "sl": 2290.0, "tp": 0.0, "profit": 0.0, "swap": 0.0, "type": 0, "time_msc": 0, "identifier": 77, "comment": "entry-facts CALIBRATE-SP6"}])
+        facts = await asyncio.wrap_future(gateway.verify("entry-facts", "INTERNAL_ENTRY_MARKET", None, {"symbol": "XAUUSDm"}))
+    finally:
+        gateway.stop()
+    assert facts["positionExists"] is True
+    assert facts["positionTicket"] == 77
+    assert verdict("INTERNAL_ENTRY_MARKET", facts) == (True, None)
+    assert fake.call_log.count("history_deals_get") >= 1
+    assert fake.call_log.count("positions_get") >= 2
 
 
 async def test_gateway_rejects_partial_close_with_dust_remainder() -> None:

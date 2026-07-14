@@ -321,32 +321,38 @@ class BrokerStateConsumer:
                 old = self.last_positions[ticket]
                 # Check for volume shrink
                 if new.volume < old.volume - 1e-12:
-                    if not self._pending.has_pending_partial(ticket, new.volume):
-                        env_pc = _envelope(
-                            type_="position.partially_closed",
-                            runtime_id=self._runtime_id,
-                            wall_iso=wall,
-                            payload={
-                                "positionId": position_id_for(ticket),
-                                "previousVolume": old.volume,
-                                "newVolume": new.volume,
-                                "closedVolume": old.volume - new.volume,
-                                "symbol": new.symbol,
-                            },
-                            position_id=position_id_for(ticket),
-                        )
-                        await self._bus.publish(env_pc, mutates_state=True)
-                        published.append(env_pc)
-
-                        env_up = _envelope(
-                            type_="position.updated",
-                            runtime_id=self._runtime_id,
-                            wall_iso=wall,
-                            payload=position_payload(new, opened_at=wall),
-                            position_id=position_id_for(ticket),
-                        )
-                        await self._bus.publish(env_up, mutates_state=True)
-                        published.append(env_up)
+                    matched = self._pending.has_pending_partial(ticket, new.volume)
+                    cmd_id = self._pending.get_command_id(ticket) if matched else None
+                    corr_id = self._pending.get_correlation_id(ticket) if matched else None
+                    env_pc = _envelope(
+                        type_="position.partially_closed",
+                        runtime_id=self._runtime_id,
+                        wall_iso=wall,
+                        payload={
+                            "positionId": position_id_for(ticket),
+                            "previousVolume": old.volume,
+                            "newVolume": new.volume,
+                            "closedVolume": old.volume - new.volume,
+                            "symbol": new.symbol,
+                        },
+                        position_id=position_id_for(ticket),
+                    )
+                    env_up = _envelope(
+                        type_="position.updated",
+                        runtime_id=self._runtime_id,
+                        wall_iso=wall,
+                        payload=position_payload(new, opened_at=wall),
+                        position_id=position_id_for(ticket),
+                    )
+                    if cmd_id is not None:
+                        metadata = {"command_id": cmd_id, "correlation_id": corr_id}
+                        env_pc = env_pc.model_copy(update=metadata)
+                        env_up = env_up.model_copy(update=metadata)
+                    await self._bus.publish(env_pc, mutates_state=True)
+                    await self._bus.publish(env_up, mutates_state=True)
+                    published.extend((env_pc, env_up))
+                    if matched:
+                        self._pending.clear(ticket)
                     self.last_positions[ticket] = new
                     continue
 

@@ -23,6 +23,35 @@ from metascan.pipeline.request import CommandRequest, InternalEntryRequest
 from metascan.pipeline.risk_config import RiskConfig
 from metascan.pipeline.risk_gate import GATE_NAMES, classify
 
+@pytest.mark.asyncio
+async def test_internal_gate_rejection_preserves_reason_without_infrastructure_alert(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "db.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    pipeline = CommandPipeline(bus=bus, gateway=_DummyGateway(), risk_config=RiskConfig(allowed_symbols=("EURUSD",), max_positions=0), pending=PendingIntentRegistry(), facts=_make_facts(), bot_magic=999)
+    pipeline.start()
+    try:
+        record = await pipeline.submit_internal(InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095), idempotency_key="gate-reject")
+        await asyncio.sleep(0.2)
+        row = journal.run_on_writer(lambda conn: conn.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
+        assert row is not None
+        assert row[0] == "FAILED"
+        failed = journal.run_on_writer(lambda conn: conn.execute("SELECT envelope_json FROM events WHERE type='command.failed' AND entity_id=?", (record.command_id,)).fetchone())
+        assert failed is not None
+        payload = __import__("json").loads(failed[0])["payload"]
+        assert payload["reason"] == "ENTRY_EXPOSURE_LIMIT"
+        assert payload["gate"] == "entry-only exposure"
+        assert payload["gateTrace"][-1] == "entry-only exposure"
+        alerts = journal.run_on_writer(lambda conn: conn.execute("SELECT COUNT(*) FROM events WHERE type='alert.created' AND entity_id=?", (record.command_id,)).fetchone()[0])
+        assert alerts == 0
+        assert pipeline.healthy
+    finally:
+        pipeline._task.cancel()
+        try: await pipeline._task
+        except asyncio.CancelledError: pass
+        await bus.close()
+
+
 # ---------------------------------------------------------------------------
 # E2E: timeout → EXECUTION_UNKNOWN, scope+intent retained, no resend
 # ---------------------------------------------------------------------------
@@ -730,7 +759,7 @@ async def test_unknown_verifies_unresolved_transitions_failed_retains_lock(tmp_p
             "SELECT state, record_json FROM commands WHERE command_id=?", (status.command_id,)
         ).fetchone())
         assert row is not None
-        assert row[0] == "EXECUTION_UNKNOWN"
+        assert row[0] == "FAILED"
         record = __import__("json").loads(row[1])
         assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight

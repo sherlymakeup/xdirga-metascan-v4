@@ -62,13 +62,18 @@ class IntentfulPending:
         return self._close.get(ticket, {}).get("exit_reason", "MANUAL")
 
     def get_command_id(self, ticket: int) -> str | None:
+        if ticket in self._partial:
+            return self._partial[ticket][1]
         return self._close.get(ticket, {}).get("command_id")
 
     def get_correlation_id(self, ticket: int) -> str | None:
+        if ticket in self._partial:
+            return f"corr-{self._partial[ticket][1]}"
         return self._close.get(ticket, {}).get("correlation_id")
 
     def clear(self, ticket: int) -> None:
         self._close.pop(ticket, None)
+        self._partial.pop(ticket, None)
 
 
 def _make_frame(positions: list, frame_id: int = 1) -> BrokerStateFrame:
@@ -261,15 +266,17 @@ async def test_partial_close_emits_only_partially_closed(tmp_path: Path) -> None
 
 
 @pytest.mark.asyncio
-async def test_pending_partial_suppresses_partially_closed(tmp_path: Path) -> None:
-    """Matching pending partial intent suppresses position.partially_closed."""
+async def test_pending_partial_emits_correlated_partial_and_update(tmp_path: Path) -> None:
     intent = IntentfulPending(partial_intent={110: (0.1, "cmd-partial-110")})
     bus, consumer = await _make_consumer(tmp_path, pending=intent)
     row_full = make_position_row(ticket=110, magic=BOT, volume=0.3)
     row_partial = make_position_row(ticket=110, magic=BOT, volume=0.1)
     events = await _collect_events(bus, consumer, [_make_frame([row_full]), _make_frame([row_partial])])
-    types = [event_type(e) for e in events]
-    assert "position.partially_closed" not in types
+    partial = next(e for e in events if event_type(e) == "position.partially_closed")
+    updated = next(e for e in events if event_type(e) == "position.updated")
+    assert partial.command_id == updated.command_id == "cmd-partial-110"
+    assert partial.correlation_id == updated.correlation_id == "corr-cmd-partial-110"
+    assert 110 not in intent._partial
 
 
 # ─── Tests: intent clear after consumer processing ───────────────────────

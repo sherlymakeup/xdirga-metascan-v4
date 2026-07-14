@@ -4,6 +4,7 @@ from __future__ import annotations
 # superseded in SP5 by the seam invariant below.
 import asyncio
 import concurrent.futures
+import datetime
 import logging
 import queue
 import threading
@@ -72,6 +73,7 @@ class Mt5Gateway:
         self._symbol_meta: dict[str, SymbolMeta] = {}
         self._resolved_symbols: list[str] = []
         self._cmd_queue: queue.Queue[tuple[Callable, concurrent.futures.Future]] = queue.Queue()
+        self._verification_context: dict[str, dict[str, Any]] = {}
 
     @property
     def boot_error(self) -> BaseException | None:
@@ -358,24 +360,51 @@ class Mt5Gateway:
             "positions": tuple({"ticket": int(p.ticket), "symbol": str(p.symbol), "magic": int(p.magic), "volume": float(p.volume), "type": int(p.type)} for p in (positions or ())),
         }
 
-    def verify(self, target_id: str | None) -> concurrent.futures.Future:
-        return self.submit_command(lambda: self._verify_on_gateway_thread(target_id))
+    def verify(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any]) -> concurrent.futures.Future:
+        return self.submit_command(lambda: self._verify_on_gateway_thread(command_id, kind, target_id, request))
 
-    def _verify_on_gateway_thread(self, target_id: str | None) -> dict[str, Any]:
-        positions = self._mt5.positions_get()
-        orders = self._mt5.orders_get() if hasattr(self._mt5, "orders_get") else ()
+    def _verify_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any]) -> dict[str, Any]:
+        first_positions = tuple(self._mt5.positions_get() or ())
+        positions = tuple(self._mt5.positions_get() or ())
+        orders = tuple(self._mt5.orders_get() or ()) if hasattr(self._mt5, "orders_get") else ()
         ticket = int(target_id) if target_id and target_id.isdigit() else None
-        position_found = any(int(p.ticket) == ticket for p in positions or ()) if ticket else None
-        order_found = any(int(o.ticket) == ticket for o in orders or ()) if ticket else None
-        deals = self._mt5.history_deals_get() if hasattr(self._mt5, "history_deals_get") else ()
-        return {
-            "positionExists": position_found,
-            "orderExists": order_found,
-            "positions": positions or (),
-            "orders": orders or (),
+        current = next((p for p in positions if ticket is not None and int(p.ticket) == ticket), None)
+        context = self._verification_context.get(command_id, {})
+        deals = ()
+        if hasattr(self._mt5, "history_deals_get"):
+            now = datetime.datetime.now(datetime.timezone.utc)
+            deals = tuple(self._mt5.history_deals_get(now - datetime.timedelta(seconds=10), now) or ())
+        result: dict[str, Any] = {
+            "positionExists": current is not None if ticket is not None else None,
+            "orderExists": any(int(o.ticket) == ticket for o in orders) if ticket is not None else None,
+            "positions": positions,
+            "orders": orders,
             "deals": deals,
             "ticket": ticket,
+            "pollCount": 2,
         }
+        if kind == "position.closePartial":
+            pre_volume = context.get("pre_volume")
+            post_volume = None if current is None else float(current.volume)
+            result.update(pre_volume=pre_volume, post_volume=post_volume, partial_executed=pre_volume is not None and post_volume is not None and post_volume < pre_volume)
+        elif kind == "position.modifyProtection":
+            expected_sl = context.get("expected_sl")
+            expected_tp = context.get("expected_tp")
+            result["modify_executed"] = current is not None and (expected_sl is None or float(current.sl) == expected_sl) and (expected_tp is None or float(current.tp) == expected_tp)
+        elif kind == "INTERNAL_ENTRY_MARKET":
+            symbol = str(context.get("symbol") or request.get("symbol") or "")
+            prefix = str(context.get("comment_prefix") or command_id[:17])
+            matched = next((p for p in positions if str(p.symbol) == symbol and int(p.magic) == self._config.bot_magic and str(getattr(p, "comment", "")).startswith(prefix)), None)
+            if matched is None:
+                matched = next((p for p in first_positions if str(p.symbol) == symbol and int(p.magic) == self._config.bot_magic and str(getattr(p, "comment", "")).startswith(prefix)), None)
+            correlated_deal = next((d for d in deals if (context.get("deal") and int(getattr(d, "ticket", 0)) == int(context["deal"])) or (context.get("order") and int(getattr(d, "order", 0)) == int(context["order"]))), None)
+            position_ticket = None if matched is None else int(matched.ticket)
+            if position_ticket is None and correlated_deal is not None:
+                candidate = int(getattr(correlated_deal, "position_id", 0) or 0)
+                if any(int(p.ticket) == candidate and int(p.magic) == self._config.bot_magic for p in positions):
+                    position_ticket = candidate
+            result.update(positionExists=position_ticket is not None, positionTicket=position_ticket, order=context.get("order"), deal=context.get("deal"))
+        return result
 
     def _mutation_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], reason: str) -> Any:
         mt5 = self._mt5
@@ -397,7 +426,10 @@ class Mt5Gateway:
                 req["sl"] = float(request["stop_loss"])
             if request.get("take_profit") is not None:
                 req["tp"] = float(request["take_profit"])
-            return self._checked_send(mt5, req, allow_unavailable_check=False)
+            self._verification_context[command_id] = {"symbol": symbol, "comment_prefix": command_id[:17]}
+            result = self._checked_send(mt5, req, allow_unavailable_check=False)
+            self._verification_context[command_id].update(order=getattr(result, "order", None), deal=getattr(result, "deal", None))
+            return result
         if kind in {"position.close", "position.closePartial"}:
             if target_id is None or int(target_id) not in positions:
                 raise ValueError("POSITION_NOT_FOUND")
@@ -406,12 +438,16 @@ class Mt5Gateway:
             tick = mt5.symbol_info_tick(p.symbol)
             volume = float(p.volume) if kind == "position.close" else self._normalize_partial(float(request.get("volume", 0)), float(p.volume), meta)
             req = {"action": deal, "position": int(p.ticket), "symbol": p.symbol, "volume": volume, "type": sell if int(p.type) == buy else buy, "price": float(tick.bid if int(p.type) == buy else tick.ask), "magic": self._config.bot_magic, "deviation": int(request.get("deviation", 20)), "type_filling": meta.filling_mode, "comment": command_id}
-            return self._checked_send(mt5, req, allow_unavailable_check=True)
+            self._verification_context[command_id] = {"pre_volume": float(p.volume)}
+            result = self._checked_send(mt5, req, allow_unavailable_check=True)
+            self._verification_context[command_id].update(order=getattr(result, "order", None), deal=getattr(result, "deal", None))
+            return result
         if kind == "position.modifyProtection":
             if target_id is None or int(target_id) not in positions:
                 raise ValueError("POSITION_NOT_FOUND")
             p = positions[int(target_id)]
             req = {"action": sltp, "position": int(p.ticket), "symbol": p.symbol, "sl": float(request["stop_loss"]) if request.get("stop_loss") is not None else float(p.sl), "tp": float(request["take_profit"]) if request.get("take_profit") is not None else float(p.tp), "magic": self._config.bot_magic, "comment": command_id}
+            self._verification_context[command_id] = {"expected_sl": req["sl"], "expected_tp": req["tp"]}
             return self._checked_send(mt5, req, allow_unavailable_check=True)
         if kind == "order.cancel":
             if target_id is None:

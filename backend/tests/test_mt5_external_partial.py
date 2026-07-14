@@ -30,6 +30,16 @@ class PartialPending:
     def has_pending_modify(self, ticket: int) -> bool:
         return False
 
+    def get_command_id(self, ticket: int) -> str | None:
+        return "cmd-partial-77" if self.key and self.key[0] == ticket else None
+
+    def get_correlation_id(self, ticket: int) -> str | None:
+        return "corr-partial-77" if self.key and self.key[0] == ticket else None
+
+    def clear(self, ticket: int) -> None:
+        if self.key and self.key[0] == ticket:
+            self.key = None
+
 
 async def _boot(tmp_path, pending=None):
     fake = FakeMt5()
@@ -95,7 +105,7 @@ async def test_external_partial(tmp_path: Path) -> None:
     await bus.close()
 
 
-async def test_pending_partial_suppresses(tmp_path: Path) -> None:
+async def test_pending_partial_emits_correlated_events(tmp_path: Path) -> None:
     bus, gw, consumer, sub, fake = await _boot(tmp_path, pending=PartialPending((77, 0.10)))
     fake.set_volume(77, 0.10)
     seen = []
@@ -107,7 +117,13 @@ async def test_pending_partial_suppresses(tmp_path: Path) -> None:
             break
         if hasattr(e, "type"):
             seen.append(event_type(e))
-    assert "position.partially_closed" not in seen
+    assert "position.partially_closed" in seen
+    assert "position.updated" in seen
+    rows = bus.journal.read_events(bus.boot_id, 0, 500)
+    partial = next(r for r in rows if event_type(r) == "position.partially_closed")
+    updated = next(r for r in rows if event_type(r) == "position.updated")
+    assert partial.command_id == updated.command_id == "cmd-partial-77"
+    assert partial.correlation_id == updated.correlation_id == "corr-partial-77"
     assert consumer.last_positions[77].volume == 0.10
     await consumer.stop()
     gw.stop()

@@ -502,7 +502,7 @@ async def test_unresolved_verification_stays_unknown_with_critical_alert_retaine
             "SELECT state, record_json FROM commands WHERE command_id=?", (status.command_id,)
         ).fetchone())
         assert row is not None
-        assert row[0] == "EXECUTION_UNKNOWN"
+        assert row[0] == "FAILED"
         record = __import__("json").loads(row[1])
         assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight

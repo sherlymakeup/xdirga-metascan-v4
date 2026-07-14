@@ -48,6 +48,7 @@ def classify(kind: str) -> tuple[str, bool] | None:
 def run_gates(request: InternalEntryRequest, facts: RuntimeFacts, config: RiskConfig, provider: RuntimeFactsProvider | None = None) -> GateResult:
     trace = [GATE_NAMES[0], GATE_NAMES[1]]
     if request.price is not None: return _result(False, "PENDING_ENTRIES_NOT_SUPPORTED", trace)
+    if request.riskFraction is not None and request.riskFraction <= 0: return _result(False, "VALIDATION_FAILED", trace)
     tick = facts.ticks.get(request.symbol)
     entry_price = (tick or {}).get("ask" if request.side == "BUY" else "bid")
     stop_price = (tick or {}).get("bid" if request.side == "BUY" else "ask")
@@ -72,7 +73,10 @@ def run_gates(request: InternalEntryRequest, facts: RuntimeFacts, config: RiskCo
         symbol_volume = sum(Decimal(str(getattr(position, "volume", 0.0))) for position in facts.positions if getattr(position, "symbol", None) == request.symbol)
         max_vol = Decimal(str(config.max_total_volume))
         max_per_sym = Decimal(str(config.max_volume_per_symbol))
-        if risk_fraction <= 0 or risk_fraction > config.max_risk_fraction or len(facts.positions) >= config.max_positions or total_volume >= max_vol or symbol_volume >= max_per_sym:
+        if risk_fraction > config.max_risk_fraction:
+            if provider: provider.unlock_entity(scope)
+            return _result(False, "RISK_FRACTION_EXCEEDS_MAX", trace, classification=classified[0], target_scope=scope)
+        if len(facts.positions) >= config.max_positions or total_volume >= max_vol or symbol_volume >= max_per_sym:
             if provider: provider.unlock_entity(scope)
             return _result(False, "ENTRY_EXPOSURE_LIMIT", trace, classification=classified[0], target_scope=scope)
         day_bal = Decimal(str(facts.day_start_balance)) if facts.day_start_balance else Decimal("0")
@@ -80,10 +84,10 @@ def run_gates(request: InternalEntryRequest, facts: RuntimeFacts, config: RiskCo
             max_loss = day_bal * Decimal(str(config.max_daily_loss))
             if Decimal(str(facts.daily_realized_pnl)) <= -max_loss:
                 if provider: provider.unlock_entity(scope)
-                return _result(False, "ENTRY_EXPOSURE_LIMIT", trace, classification=classified[0], target_scope=scope)
+                return _result(False, "DAILY_LOSS_LIMIT_REACHED", trace, classification=classified[0], target_scope=scope)
     except (InvalidOperation, TypeError, ValueError):
         if provider: provider.unlock_entity(scope)
-        return _result(False, "ENTRY_EXPOSURE_LIMIT", trace, classification=classified[0], target_scope=scope)
+        return _result(False, "SIZING_METADATA_INVALID", trace, classification=classified[0], target_scope=scope)
     trace.append(GATE_NAMES[6])
     if request.stopLoss is None:
         if provider: provider.unlock_entity(scope)
@@ -97,12 +101,15 @@ def run_gates(request: InternalEntryRequest, facts: RuntimeFacts, config: RiskCo
         loss_per_lot = (distance / tick_size) * tick_value_loss
         raw_volume = risk_cash / loss_per_lot
         volume = (raw_volume // volume_step) * volume_step
-        if not all(value.is_finite() and value > 0 for value in (risk_cash, distance, loss_per_lot, raw_volume, volume)) or volume > volume_max or volume * loss_per_lot > risk_cash: raise InvalidOperation
+        if not all(value.is_finite() and value > 0 for value in (risk_cash, distance, loss_per_lot, raw_volume, volume)) or volume * loss_per_lot > risk_cash: raise InvalidOperation
     except (InvalidOperation, DivisionByZero, TypeError, ValueError):
         if provider: provider.unlock_entity(scope)
-        return _result(False, "INVALID_VOLUME", trace, classification=classified[0], target_scope=scope)
+        return _result(False, "SIZING_METADATA_INVALID", trace, classification=classified[0], target_scope=scope)
     if volume < volume_min:
         if provider: provider.unlock_entity(scope)
-        return _result(False, "SIZING_FLOOR_REJECTION", trace, classification=classified[0], target_scope=scope)
+        return _result(False, "RISK_BUDGET_BELOW_MIN_VOLUME", trace, classification=classified[0], target_scope=scope)
+    if volume > volume_max:
+        if provider: provider.unlock_entity(scope)
+        return _result(False, "VOLUME_ABOVE_BROKER_MAX", trace, classification=classified[0], target_scope=scope)
     trace.append(GATE_NAMES[7])
     return _result(True, None, trace, volume, classified[0], scope)

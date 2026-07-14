@@ -273,14 +273,20 @@ class CommandPipeline:
             await self._transition(status, "FAILED", reason="SAFETY_CLASSIFICATION_FAILED", event_type="command.failed"); return
         scope = self._scope(kind, request, status)
         if scope in self._locks:
-            await self._transition(status, "FAILED", reason="MUTATION_SCOPE_LOCKED", event_type="command.failed", extra={"classification": classified[0], "targetScope": scope}); return
+            extra = {"classification": classified[0], "targetScope": scope}
+            if internal_record is not None:
+                await self._transition_internal(internal_record, "FAILED", reason="MUTATION_SCOPE_LOCKED", event_type="command.failed", extra=extra)
+            else:
+                await self._transition(status, "FAILED", reason="MUTATION_SCOPE_LOCKED", event_type="command.failed", extra=extra)
+            return
         if kind == "INTERNAL_ENTRY_MARKET":
             if self.halted or not self.entries_enabled:
                 await self._transition_internal(internal_record, "FAILED", reason="ENTRY_NOT_ELIGIBLE", event_type="command.failed"); return
             assert isinstance(request, InternalEntryRequest)
             result = run_gates(request, self._facts.snapshot(), self._risk_config, self._facts)
             if not result.passed:
-                await self._transition(status, "FAILED", reason=result.reason, event_type="command.failed", extra={"classification": result.classification, "gate": result.trace[-1], "targetScope": result.target_scope}); return
+                await self._transition_internal(internal_record, "FAILED", reason=result.reason, event_type="command.failed", extra={"classification": result.classification, "gate": result.trace[-1], "gateTrace": list(result.trace), "targetScope": result.target_scope})
+                return
             payload = {"symbol": request.symbol, "side": request.side, "stop_loss": request.stopLoss, "take_profit": request.takeProfit, "volume": result.volume, "deviation": self._risk_config.deviation_points}
         else:
             payload = request.model_dump(exclude_none=True)
@@ -314,22 +320,28 @@ class CommandPipeline:
         future = self._gateway.mutation(record.command_id, kind, target, payload, reason="KILL_SWITCH" if self.halted else "MANUAL")
         try: result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), timeout=self._risk_config.gateway_timeout_s)
         except asyncio.TimeoutError:
-            await self._unknown_internal(record, kind, scope, target, "OUTCOME_AMBIGUOUS"); return
+            await self._unknown_internal(record, kind, scope, target, "OUTCOME_AMBIGUOUS", payload); return
         except Exception:
-            await self._unknown_internal(record, kind, scope, target, "BROKER_DISCONNECT_MID_CALL"); return
+            await self._unknown_internal(record, kind, scope, target, "BROKER_DISCONNECT_MID_CALL", payload); return
         if getattr(result, "retcode", None) in self._gateway.success_retcodes():
             await self._transition_internal(record, "COMPLETED", event_type="command.completed")
         elif getattr(result, "retcode", None) is not None:
             await self._transition_internal(record, "FAILED", reason="ORDER_CHECK_REJECTED" if getattr(result, "_order_check", False) else "BROKER_REJECTED", event_type="command.failed")
-        else: await self._unknown_internal(record, kind, scope, target, "OUTCOME_AMBIGUOUS"); return
+        else: await self._unknown_internal(record, kind, scope, target, "OUTCOME_AMBIGUOUS", payload); return
         self._release(scope, target, payload)
 
-    async def _unknown_internal(self, record: InternalCommandRecord, kind: str, scope: str, target: str | None, reason: str) -> None:
+    def _verification_future(self, command_id: str, kind: str, target: str | None, payload: dict[str, Any]) -> Any:
+        try:
+            return self._gateway.verify(command_id, kind, target, payload)
+        except TypeError:
+            return self._gateway.verify(target)
+
+    async def _unknown_internal(self, record: InternalCommandRecord, kind: str, scope: str, target: str | None, reason: str, payload: dict[str, Any] | None = None) -> None:
         await self._transition_internal(record, "EXECUTION_UNKNOWN", reason=reason, event_type="command.execution_unknown")
         await self._bus.publish(self._envelope(record, "reconciliation.issue.detected", "EXECUTION_UNKNOWN", reason, {"targetScope": scope}), mutates_state=False)
         if target and target.isdigit(): self._pending.retain_for_reconciliation(int(target))
         try:
-            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._gateway.verify(target))), timeout=self._risk_config.verification_timeout_s)
+            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._verification_future(record.command_id, kind, target, payload or {}))), timeout=self._risk_config.verification_timeout_s)
             executed, vreason = verdict(kind, result)
             if executed is True:
                 await self._bus.publish(self._envelope(record, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed"}), mutates_state=False)
@@ -351,21 +363,21 @@ class CommandPipeline:
             if kind == "position.close":
                 er = "KILL_SWITCH" if self.halted else "MANUAL"
                 self._pending.register_close(ticket, status.command_id, exit_reason=er, correlation_id=status.correlation_id)
-            elif kind == "position.closePartial": self._pending.register_partial(ticket, float(payload.get("volume", 0)), status.command_id)
+            elif kind == "position.closePartial": self._pending.register_partial(ticket, float(payload.get("volume", 0)), status.command_id, correlation_id=status.correlation_id)
             elif kind == "position.modifyProtection": self._pending.register_modify(ticket, status.command_id)
         accepted = await self._transition(status, "ACCEPTED", event_type="command.accepted")
         progress = await self._transition(accepted, "IN_PROGRESS", event_type="command.progress")
         future = self._gateway.mutation(progress.command_id, kind, target, payload, reason="KILL_SWITCH" if self.halted else "MANUAL")
         try: result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), timeout=self._risk_config.gateway_timeout_s)
         except asyncio.TimeoutError:
-            await self._unknown(progress, kind, scope, target, "OUTCOME_AMBIGUOUS"); return
+            await self._unknown(progress, kind, scope, target, "OUTCOME_AMBIGUOUS", payload); return
         except Exception:
-            await self._unknown(progress, kind, scope, target, "BROKER_DISCONNECT_MID_CALL"); return
+            await self._unknown(progress, kind, scope, target, "BROKER_DISCONNECT_MID_CALL", payload); return
         if getattr(result, "retcode", None) in self._gateway.success_retcodes():
             await self._transition(progress, "COMPLETED", event_type="command.completed")
         elif getattr(result, "retcode", None) is not None:
             await self._transition(progress, "FAILED", reason="ORDER_CHECK_REJECTED" if getattr(result, "_order_check", False) else "BROKER_REJECTED", event_type="command.failed")
-        else: await self._unknown(progress, kind, scope, target, "OUTCOME_AMBIGUOUS"); return
+        else: await self._unknown(progress, kind, scope, target, "OUTCOME_AMBIGUOUS", payload); return
         self._release(scope, target, payload)
 
     async def _execute_child(self, child_status: RuntimeCommandStatus, kind: str, payload: dict[str, Any], scope: str, origin: str = "TRANSPORT") -> str:
@@ -405,12 +417,12 @@ class CommandPipeline:
             await self._transition(child_status, "EXECUTION_UNKNOWN", reason="OUTCOME_AMBIGUOUS", event_type="command.execution_unknown")
             return "unknown"
 
-    async def _unknown(self, status: RuntimeCommandStatus, kind: str, scope: str, target: str | None, reason: str) -> None:
+    async def _unknown(self, status: RuntimeCommandStatus, kind: str, scope: str, target: str | None, reason: str, payload: dict[str, Any] | None = None) -> None:
         await self._transition(status, "EXECUTION_UNKNOWN", reason=reason, event_type="command.execution_unknown")
         await self._bus.publish(self._envelope(status, "reconciliation.issue.detected", "EXECUTION_UNKNOWN", reason, {"targetScope": scope}), mutates_state=False)
         if target and target.isdigit(): self._pending.retain_for_reconciliation(int(target))
         try:
-            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._gateway.verify(target))), timeout=self._risk_config.verification_timeout_s)
+            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._verification_future(status.command_id, kind, target, payload or {}))), timeout=self._risk_config.verification_timeout_s)
             executed, vreason = verdict(kind, result)
             if executed is True:
                 await self._bus.publish(self._envelope(status, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed"}), mutates_state=False)
@@ -430,6 +442,7 @@ class CommandPipeline:
         self._facts.unlock_entity(scope)
 
     async def _verification_unresolved(self, status: RuntimeCommandStatus, scope: str, target: str | None) -> None:
+        await self._transition(status, "FAILED", reason="OUTCOME_AMBIGUOUS", event_type="command.failed")
         alert_payload = {"commandId": status.command_id, "targetScope": scope, "reason": "OUTCOME_AMBIGUOUS"}
         await self._bus.publish(
             RuntimeEventEnvelope(event_id=str(uuid.uuid4()), type="alert.created", runtime_id=self._runtime_id,
@@ -441,6 +454,7 @@ class CommandPipeline:
         )
 
     async def _verification_unresolved_internal(self, record: InternalCommandRecord, scope: str, target: str | None) -> None:
+        await self._transition_internal(record, "FAILED", reason="OUTCOME_AMBIGUOUS", event_type="command.failed")
         alert_payload = {"commandId": record.command_id, "targetScope": scope, "reason": "OUTCOME_AMBIGUOUS"}
         await self._bus.publish(
             RuntimeEventEnvelope(event_id=str(uuid.uuid4()), type="alert.created", runtime_id=self._runtime_id,
@@ -518,7 +532,7 @@ class CommandPipeline:
         }
 
         if straggler_ids or counts.get("failed", 0) > 0 or counts.get("unknown", 0) > 0:
-            await self._transition(status, "FAILED", event_type="command.failed", extra=payload)
+            await self._transition(status, "FAILED", reason="BROKER_REJECTED", event_type="command.failed", extra=payload)
             alert = RuntimeEventEnvelope(
                 event_id=str(uuid.uuid4()), type="alert.created",
                 runtime_id=self._runtime_id, boot_id=self._bus.boot_id,
@@ -618,7 +632,7 @@ class CommandPipeline:
             "stragglerIds": stragglers,
         }
         if stragglers:
-            await self._transition(status, "FAILED", event_type="command.failed", extra=payload)
+            await self._transition(status, "FAILED", reason="BROKER_REJECTED", event_type="command.failed", extra=payload)
             await self._emit_safety("safety.kill.failed", status, "CRITICAL", extra={"stragglerIds": stragglers})
             alert = RuntimeEventEnvelope(
                 event_id=str(uuid.uuid4()), type="alert.created",
@@ -626,7 +640,7 @@ class CommandPipeline:
                 sequence=0, revision=0, occurred_at=_now(), emitted_at=_now(),
                 received_at=_now(), severity="CRITICAL",
                 source="LOCAL_RUNTIME", command_id=status.command_id,
-                payload={"commandId": status.command_id, "reason": "EMERGENCY_STRAAGGLERS", "stragglerIds": stragglers},
+                payload={"commandId": status.command_id, "reason": "EMERGENCY_STRAGGLERS", "stragglerIds": stragglers},
             )
             await self._bus.publish(alert, mutates_state=False)
         else:
