@@ -101,7 +101,7 @@ async def test_timeout_goes_execution_unknown_retains_scope_and_intent(tmp_path:
     gw.block_next_mutation(60)
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="12345")
@@ -131,7 +131,7 @@ async def test_disconnect_transitions_execution_unknown(tmp_path: Path) -> None:
     gw.disconnect_next_mutation()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="12345")
@@ -186,7 +186,7 @@ async def test_entry_complete_e2e(tmp_path: Path) -> None:
     gw = _EntryGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095)
@@ -215,7 +215,7 @@ async def test_entry_rejected_by_broker(tmp_path: Path) -> None:
     gw.set_retcode(10016)
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = InternalEntryRequest(symbol="EURUSD", side="BUY", stopLoss=1.095)
@@ -245,7 +245,7 @@ async def test_close_e2e(tmp_path: Path) -> None:
     gw = _DummyGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -272,7 +272,7 @@ async def test_close_partial_e2e(tmp_path: Path) -> None:
     gw = _DummyGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.closePartial", target_id="1001", volume=0.05)
@@ -298,7 +298,7 @@ async def test_protection_e2e(tmp_path: Path) -> None:
     gw = _DummyGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.modifyProtection", target_id="1001", stop_loss=1.090, take_profit=1.110)
@@ -324,7 +324,7 @@ async def test_cancel_e2e(tmp_path: Path) -> None:
     gw = _DummyGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="order.cancel", target_id="42")
@@ -464,7 +464,7 @@ async def test_mutation_in_flight_reflects_active_locks(tmp_path: Path) -> None:
     gw.block_next_mutation(60)
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         assert not pipeline.mutation_in_flight
@@ -560,7 +560,7 @@ async def test_late_result_after_timeout_stays_execution_unknown(tmp_path: Path)
     gw = _LateGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -652,15 +652,16 @@ class _VerifyingGateway:
 
 @pytest.mark.asyncio
 async def test_unknown_verifies_executed_releases_lock(tmp_path: Path) -> None:
+    """Close: position ABSENT → executed → COMPLETED, lock released."""
     journal = Journal(tmp_path / "db.sqlite")
     bus = EventBus(journal)
     await bus.start()
     gw = _VerifyingGateway()
     gw.block_next_mutation(60)
-    gw.script_verify(positionExists=True)
+    gw.script_verify(positionExists=False)  # position absent → close executed
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -681,15 +682,16 @@ async def test_unknown_verifies_executed_releases_lock(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_unknown_verifies_never_existed_releases_lock(tmp_path: Path) -> None:
+    """Close: position PRESENT → not executed → FAILED, lock released."""
     journal = Journal(tmp_path / "db.sqlite")
     bus = EventBus(journal)
     await bus.start()
     gw = _VerifyingGateway()
     gw.block_next_mutation(60)
-    gw.script_verify(positionExists=False)
+    gw.script_verify(positionExists=True)  # position still there → close not executed
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -718,7 +720,7 @@ async def test_unknown_verifies_unresolved_transitions_failed_retains_lock(tmp_p
     gw.script_verify_block(60)
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1, verification_timeout_s=0.1), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1, verification_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -728,9 +730,9 @@ async def test_unknown_verifies_unresolved_transitions_failed_retains_lock(tmp_p
             "SELECT state, record_json FROM commands WHERE command_id=?", (status.command_id,)
         ).fetchone())
         assert row is not None
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
         record = __import__("json").loads(row[1])
-        assert record.get("reason") == "VERIFICATION_UNRESOLVED"
+        assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight
         alert_row = journal.run_on_writer(lambda conn: conn.execute(
             "SELECT envelope_json FROM events WHERE type='alert.created' AND entity_id=?", (status.command_id,)
@@ -760,7 +762,7 @@ async def test_start_recovers_unresolved_entry_intents(tmp_path: Path) -> None:
     gw = _VerifyingGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, journal=journal)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999, journal=journal)
     pipeline.start()
     try:
         assert pipeline.mutation_in_flight
@@ -791,7 +793,7 @@ async def test_persist_runtime_halted_state_recovered_on_start(tmp_path: Path) -
     gw = _VerifyingGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, journal=journal)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(), pending=pending, facts=facts, bot_magic=999, journal=journal)
     pipeline.start()
     try:
         assert pipeline.halted
@@ -811,7 +813,7 @@ async def test_internal_entry_rejected_when_halted(tmp_path: Path) -> None:
     gw = _EntryGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts, bot_magic=999)
     pipeline.halted = True
     pipeline.entries_enabled = False
     pipeline.start()
@@ -846,7 +848,7 @@ async def test_start_resume_clears_halted_entries_re_enabled(tmp_path: Path) -> 
     gw = _DummyGateway()
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts, journal=journal)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("EURUSD",)), pending=pending, facts=facts, bot_magic=999, journal=journal)
     pipeline.start()
     try:
         assert pipeline.halted

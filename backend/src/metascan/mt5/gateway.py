@@ -363,9 +363,19 @@ class Mt5Gateway:
 
     def _verify_on_gateway_thread(self, target_id: str | None) -> dict[str, Any]:
         positions = self._mt5.positions_get()
+        orders = self._mt5.orders_get() if hasattr(self._mt5, "orders_get") else ()
         ticket = int(target_id) if target_id and target_id.isdigit() else None
-        found = any(int(p.ticket) == ticket for p in positions or ()) if ticket else None
-        return {"positionExists": found, "positions": positions or (), "deals": self._mt5.history_deals_get() if hasattr(self._mt5, "history_deals_get") else ()}
+        position_found = any(int(p.ticket) == ticket for p in positions or ()) if ticket else None
+        order_found = any(int(o.ticket) == ticket for o in orders or ()) if ticket else None
+        deals = self._mt5.history_deals_get() if hasattr(self._mt5, "history_deals_get") else ()
+        return {
+            "positionExists": position_found,
+            "orderExists": order_found,
+            "positions": positions or (),
+            "orders": orders or (),
+            "deals": deals,
+            "ticket": ticket,
+        }
 
     def _mutation_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], reason: str) -> Any:
         mt5 = self._mt5
@@ -382,7 +392,7 @@ class Mt5Gateway:
             if side not in {"BUY", "SELL"}:
                 raise ValueError("INVALID_SIDE")
             tick = mt5.symbol_info_tick(symbol)
-            req = {"action": deal, "symbol": symbol, "volume": float(request["volume"]), "type": buy if side == "BUY" else sell, "price": float(tick.ask if side == "BUY" else tick.bid), "magic": self._config.bot_magic, "deviation": int(request.get("deviation", 20)), "type_filling": meta.filling_mode, "comment": f"{command_id} CALIBRATE-SP6"}
+            req = {"action": deal, "symbol": symbol, "volume": float(request["volume"]), "type": buy if side == "BUY" else sell, "price": float(tick.ask if side == "BUY" else tick.bid), "magic": self._config.bot_magic, "deviation": int(request.get("deviation", 20)), "type_filling": meta.filling_mode, "comment": f"{command_id[:17]} CALIBRATE-SP6"}
             if request.get("stop_loss") is not None:
                 req["sl"] = float(request["stop_loss"])
             if request.get("take_profit") is not None:

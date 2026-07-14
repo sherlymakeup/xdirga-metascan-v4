@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
@@ -8,6 +8,8 @@ class _Intent:
     command_id: str
     kind: str
     volume: float | None = None
+    exit_reason: str = "MANUAL"
+    correlation_id: str | None = None
 
 
 class PendingIntentRegistry:
@@ -34,8 +36,8 @@ class PendingIntentRegistry:
     def entry_ticket(self, symbol: str) -> int | None:
         return self._entry_tickets.get(symbol)
 
-    def register_close(self, ticket: int, command_id: str) -> None:
-        self._intents[ticket] = _Intent(command_id, "close")
+    def register_close(self, ticket: int, command_id: str, *, exit_reason: str = "MANUAL", correlation_id: str | None = None) -> None:
+        self._intents[ticket] = _Intent(command_id, "close", exit_reason=exit_reason, correlation_id=correlation_id)
 
     def register_partial(self, ticket: int, volume: float, command_id: str) -> None:
         self._intents[ticket] = _Intent(command_id, "partial", volume)
@@ -65,3 +67,15 @@ class PendingIntentRegistry:
     def has_pending_modify(self, ticket: int) -> bool:
         i = self._intents.get(ticket)
         return i is not None and i.kind == "modify"
+
+    def get_exit_reason(self, ticket: int) -> str:
+        i = self._intents.get(ticket)
+        return i.exit_reason if i is not None else "MANUAL"
+
+    def get_command_id(self, ticket: int) -> str | None:
+        i = self._intents.get(ticket)
+        return None if i is None else i.command_id
+
+    def get_correlation_id(self, ticket: int) -> str | None:
+        i = self._intents.get(ticket)
+        return None if i is None else i.correlation_id

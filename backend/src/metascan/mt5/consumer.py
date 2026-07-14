@@ -270,9 +270,10 @@ class BrokerStateConsumer:
             for ticket in list(self.last_positions.keys()):
                 if ticket not in managed:
                     old = self.last_positions[ticket]
-                    if self._pending.has_pending_close(ticket):
-                        del self.last_positions[ticket]
-                        continue
+                    exit_reason = self._pending.get_exit_reason(ticket)
+                    cmd_id = self._pending.get_command_id(ticket)
+                    corr_id = self._pending.get_correlation_id(ticket)
+
                     env_c = _envelope(
                         type_="position.closed",
                         runtime_id=self._runtime_id,
@@ -280,6 +281,8 @@ class BrokerStateConsumer:
                         payload={"positionId": position_id_for(ticket), "symbol": old.symbol, "state": "CLOSED"},
                         position_id=position_id_for(ticket),
                     )
+                    if cmd_id is not None:
+                        env_c = env_c.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
                     await self._bus.publish(env_c, mutates_state=True)
                     published.append(env_c)
 
@@ -287,11 +290,17 @@ class BrokerStateConsumer:
                         type_="trade.closed",
                         runtime_id=self._runtime_id,
                         wall_iso=wall,
-                        payload=closed_trade_payload(old, closed_at=wall),
+                        payload=closed_trade_payload(
+                            old, closed_at=wall, exit_reason=exit_reason, correlation_id=corr_id,
+                        ),
                         position_id=position_id_for(ticket),
                     )
+                    if cmd_id is not None:
+                        env_t = env_t.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
                     await self._bus.publish(env_t, mutates_state=True)
                     published.append(env_t)
+
+                    self._pending.clear(ticket)
                     del self.last_positions[ticket]
 
             # Opens + updates

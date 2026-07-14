@@ -61,7 +61,7 @@ async def pipeline_stub(event_bus: EventBus) -> CommandPipeline:
             runtime_state="READY", entries_enabled=True, safety_mode_active=False,
             trading_halt=False, account={}, account_age_ms=0, positions=(), ticks={}, symbol_meta={},
         ),
-        bot_magic=0,
+        bot_magic=999,
         runtime_id="rt-test",
     )
     yield p

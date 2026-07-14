@@ -22,6 +22,7 @@ async def test_internal_entry_persists_internal_xor_record(tmp_path: Path) -> No
         bus=bus,
         gateway=object(),
         risk_config=RiskConfig(),
+        bot_magic=999,
         facts=RuntimeFactsProvider.current(
             runtime_state="READY", entries_enabled=True, safety_mode_active=False,
             trading_halt=False, account={}, account_age_ms=0, positions=(), ticks={}, symbol_meta={},

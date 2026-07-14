@@ -62,6 +62,21 @@ async def test_gateway_maps_market_entry_from_current_tick() -> None:
     assert fake.order_send_requests == [{"action": 1, "symbol": "XAUUSDm", "volume": 0.1, "type": 0, "price": 2300.5, "magic": 7, "deviation": 20, "type_filling": 1, "comment": "entry CALIBRATE-SP6", "sl": 2290.0, "tp": 2320.0}]
 
 
+async def test_gateway_limits_broker_comments_to_31_characters() -> None:
+    fake = FakeMt5()
+    gateway = make_gateway(fake)
+    gateway.start()
+    gateway.wait_boot(3.0)
+    try:
+        command_id = "12345678-1234-1234-1234-123456789012"
+        await asyncio.wrap_future(gateway.mutation(command_id, "INTERNAL_ENTRY_MARKET", None, {"symbol": "XAUUSDm", "side": "BUY", "volume": 0.1, "stop_loss": 2290.0}))
+    finally:
+        gateway.stop()
+
+    assert "CALIBRATE-SP6" in fake.order_send_requests[0]["comment"]
+    assert len(fake.order_send_requests[0]["comment"]) <= 31
+
+
 async def test_gateway_maps_close_partial_protection_and_cancel_hygienically() -> None:
     fake = FakeMt5()
     fake.set_positions([{

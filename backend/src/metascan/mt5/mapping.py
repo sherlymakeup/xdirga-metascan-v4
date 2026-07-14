@@ -69,13 +69,17 @@ def closed_trade_payload(
     *,
     closed_at: str,
     strategy_id: str = "unknown",
+    exit_reason: str = "MANUAL",
+    correlation_id: str | None = None,
 ) -> dict:
+    from metascan.pipeline.outcome_handler import CLOSE_WHITELIST
+    assert exit_reason in CLOSE_WHITELIST, f"exitReason {exit_reason!r} not in {CLOSE_WHITELIST!r}"
     pid = position_id_for(row.ticket)
     gross = row.profit
     commission = row.commission
     swap = row.swap
     net = gross + commission + swap
-    return {
+    result = {
         "tradeId": f"t-{row.ticket}",
         "positionId": pid,
         "strategyId": strategy_id,
@@ -94,10 +98,13 @@ def closed_trade_payload(
         "rMultiple": None,
         "mfeR": None,
         "maeR": None,
-        "exitReason": "MANUAL",
+        "exitReason": exit_reason,
         "partialFills": [],
         "tags": ["sp3-no-history"],
     }
+    if correlation_id is not None:
+        result["correlationId"] = correlation_id
+    return result
 
 
 def _msc_to_iso(time_msc: int) -> str:

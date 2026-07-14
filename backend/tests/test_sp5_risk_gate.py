@@ -60,6 +60,14 @@ def test_validation_rejects_side_invalid_protection(side: str, stop_loss: float 
     assert run_gates(request, facts, RiskConfig(allowed_symbols=("EURUSD",))).reason == "VALIDATION_FAILED"
 
 
+@pytest.mark.parametrize(("side", "stop_loss"), [("BUY", 1.100005), ("SELL", 1.100005)])
+def test_stop_loss_validation_uses_liquidation_quote(side: str, stop_loss: float) -> None:
+    request = InternalEntryRequest(symbol="EURUSD", side=side, stopLoss=stop_loss)
+    facts = RuntimeFactsProvider.current(runtime_state="READY", entries_enabled=True, safety_mode_active=False, trading_halt=False, account={"equity": 10_000.0}, account_age_ms=0, positions=(), ticks={"EURUSD": {"bid": 1.1, "ask": 1.10001, "age_ms": 0}}, symbol_meta={}).snapshot()
+
+    assert run_gates(request, facts, RiskConfig(allowed_symbols=("EURUSD",))).reason == "VALIDATION_FAILED"
+
+
 # SP5_DESIGN.md:120 requires an explicit whitelist and calibration comment.
 def test_entry_fails_closed_without_whitelisted_symbol() -> None:
     facts = RuntimeFactsProvider.current(runtime_state="READY", entries_enabled=True, safety_mode_active=False, trading_halt=False, account={"equity": 10_000.0}, account_age_ms=0, positions=(), ticks={"EURUSD": {"bid": 1.1, "ask": 1.10001, "age_ms": 0}}, symbol_meta={"EURUSD": {"tick_size": 0.00001, "tick_value_loss": 1.0, "volume_min": 0.01, "volume_max": 1.0, "volume_step": 0.01, "age_ms": 0}}).snapshot()

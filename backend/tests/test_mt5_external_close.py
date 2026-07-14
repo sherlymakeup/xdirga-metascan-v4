@@ -19,6 +19,9 @@ BOT = 240101
 
 
 class ClosePending:
+    """Pending close intent: emits correlated events with exit_reason=MANUAL,
+    no command_id/correlation_id (external-like intent without pipeline origin)."""
+
     def __init__(self, tickets: set[int]) -> None:
         self.tickets = tickets
 
@@ -30,6 +33,18 @@ class ClosePending:
 
     def has_pending_modify(self, ticket: int) -> bool:
         return False
+
+    def get_exit_reason(self, ticket: int) -> str:
+        return "MANUAL"
+
+    def get_command_id(self, ticket: int) -> str | None:
+        return None
+
+    def get_correlation_id(self, ticket: int) -> str | None:
+        return None
+
+    def clear(self, ticket: int) -> None:
+        self.tickets.discard(ticket)
 
 
 async def _boot_with_pos(tmp_path, pending=None):
@@ -98,27 +113,33 @@ async def test_external_full_close_emits_position_and_trade_manual(tmp_path: Pat
     await bus.close()
 
 
-async def test_pending_close_suppresses_external_trade_closed(tmp_path: Path) -> None:
+async def test_pending_close_emits_correlated_events(tmp_path: Path) -> None:
+    """Rewritten: pending close intent emits position.closed + trade.closed
+    (not suppressed). Consumer processes broker disappearance and emits
+    correlated events using intent metadata."""
     bus, gw, consumer, sub, fake = await _boot_with_pos(tmp_path, pending=ClosePending({55}))
     fake.remove_position(55)
     seen = []
-    await asyncio.sleep(0.5)
-    end = asyncio.get_event_loop().time() + 1.5
+    end = asyncio.get_event_loop().time() + 5
     while asyncio.get_event_loop().time() < end:
-        try:
-            e = await asyncio.wait_for(sub.get(), timeout=0.2)
-        except asyncio.TimeoutError:
+        e = await asyncio.wait_for(sub.get(), timeout=2)
+        if not hasattr(e, "type"):
+            continue
+        seen.append(event_type(e))
+        if "trade.closed" in seen and "position.closed" in seen:
             break
-        if hasattr(e, "type"):
-            seen.append(event_type(e))
-    assert "trade.closed" not in seen
-    assert "position.closed" not in seen
+    assert "position.closed" in seen
+    assert "trade.closed" in seen
+    rows = bus.journal.read_events(bus.boot_id, 0, 500)
+    trade = next(r for r in rows if event_type(r) == "trade.closed")
+    assert trade.payload["exitReason"] == "MANUAL"
+    assert trade.payload["positionId"] == "55"
     await consumer.stop()
     gw.stop()
     await bus.close()
 
 
-async def test_same_sequence_different_pending_different_events(tmp_path: Path) -> None:
+async def test_same_sequence_different_pending_different_exit_reasons(tmp_path: Path) -> None:
     from metascan.mt5.types import BrokerStateFrame
     from types import MappingProxyType
     from helpers import make_position_row
@@ -154,4 +175,4 @@ async def test_same_sequence_different_pending_different_events(tmp_path: Path) 
     ext = await run(NullPendingIntentLookup())
     bot = await run(ClosePending({1}))
     assert "trade.closed" in ext
-    assert "trade.closed" not in bot
+    assert "trade.closed" in bot
