@@ -450,16 +450,24 @@ class CommandPipeline:
             ready: asyncio.Future[None] = loop.create_future()
             handoff: list[tuple[Any, Exception | None]] = []
             handoff_lock = threading.Lock()
+            claimed = False
+
+            def claim(future: concurrent.futures.Future) -> bool:
+                nonlocal claimed
+                with handoff_lock:
+                    if claimed or not future.done():
+                        return False
+                    try:
+                        error = future.exception()
+                        result = None if error is not None else future.result()
+                    except Exception as exc:
+                        result, error = None, exc
+                    handoff.append((result, error))
+                    claimed = True
+                    return True
 
             def complete(future: concurrent.futures.Future) -> None:
-                try:
-                    error = future.exception()
-                    result = None if error is not None else future.result()
-                except Exception as exc:
-                    result, error = None, exc
-                with handoff_lock:
-                    handoff.append((result, error))
-                if loop.is_closed():
+                if not claim(future) or loop.is_closed():
                     return
                 try:
                     loop.call_soon_threadsafe(lambda: ready.done() or ready.set_result(None))
@@ -475,6 +483,7 @@ class CommandPipeline:
                 raise
             except asyncio.TimeoutError:
                 timed_out = True
+                claim(source)
                 with handoff_lock:
                     outcome = handoff[0] if handoff else None
                 if outcome is None:

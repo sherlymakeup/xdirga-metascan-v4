@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 9 final deadline result-handoff correction implemented; verification evidence below.
+Status: Round 10 terminal source claim-arbiter correction implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -166,6 +166,35 @@ Round 9 makes the source callback the sole outcome owner. It consumes source res
 
 TDD evidence: the new boundary success and exception tests failed on `fa6620cfc742cc903ce58c54b338e2e619966b40` because success returned ambiguity and source exception ownership remained incomplete. Round 9 stability: runs 1–10 each `5 passed`; Round 8 runs 1–10 each `9 passed`; Round 7 runs 1–10 each `11 passed`; combined Round 5–9 runs 1–10 each `51 passed`. SP6 was not started.
 
+## Round 10 terminal source claim arbiter
+
+Round 9 fixed delayed event-loop notification after the verifier callback had populated its handoff, but a source can become `FINISHED` before callbacks registered ahead of the verifier finish. A held earlier callback left the verifier handoff empty at deadline, so terminal success still returned ambiguity.
+
+Round 10 gives callback and timeout one lock-protected claim arbiter. Either path may claim a terminal source; result/exception retrieval and handoff publication occur atomically before `claimed` becomes visible. If timeout wins, the delayed verifier callback is a no-op. If callback wins, timeout observes the fully published outcome. Pending sources remain callback-owned for late cleanup; cancellation still propagates without retry.
+
+| Production behavior | Exact tests |
+|---|---|
+| Timeout claims success while earlier callback blocks verifier callback | `test_sp5_r10_temporal_verifier_claim.py::test_a_timeout_claims_finished_success_before_blocked_callback_release` |
+| Timeout claims ordinary exception exactly once | `test_sp5_r10_temporal_verifier_claim.py::test_b_timeout_claims_finished_ordinary_exception_once` |
+| Cancellation with terminal ownership unresolved | `test_sp5_r10_temporal_verifier_claim.py::test_c_task_cancellation_leaves_finished_source_for_callback_cleanup` |
+| Callback-first and timeout-first atomic ownership | `test_sp5_r10_temporal_verifier_claim.py::test_d_claim_and_publication_are_atomic_for_both_ownership_winners` |
+| Claimed state cannot precede handoff publication | `test_sp5_r10_temporal_verifier_claim.py::test_e_claim_is_published_before_ownership_becomes_visible` |
+
+TDD evidence: on `2c691f0519175ddb3bf99ec7241d9988eb62d844`, the primary success returned ambiguity, the exception twin remained unconsumed until callback release, and ownership-race assertions failed. Round 10 stability: runs 1–10 each `6 passed`; Round 9 runs 1–10 each `5 passed`; Round 8 runs 1–10 each `9 passed`; Round 7 runs 1–10 each `11 passed`; combined Round 5–10 runs 1–10 each `57 passed`. SP6 was not started.
+
+### Round 10 exit-path ownership audit
+
+1. Normal terminal success: callback claims, retrieves, publishes, notifies; verifier evaluates immediately.
+2. Nonterminal result: callback claim completes; retry waits until high-resolution cadence target.
+3. Pending deadline: timeout cannot claim; returns ambiguity; callback later consumes source once.
+4. Terminal success with verifier callback blocked: timeout claims and evaluates success.
+5. Terminal exception with verifier callback blocked: timeout claims once and preserves ambiguity.
+6. Callback claimed before notification: timeout sees fully published handoff under the same lock.
+7. Async exception before deadline: callback claims; verifier retries at cadence.
+8. Sync submission exception: no source exists; verifier retries at cadence while budget remains.
+9. Cancellation while pending: `CancelledError` propagates; callback retains cleanup ownership.
+10. Cancellation during terminal race: no normal verdict/retry; arbiter settles source exactly once.
+
 ## RCA and mechanical prevention
 
 The approved design was previously summarized instead of traced mechanically through production boundaries. Tests injected verdict dictionaries that the real gateway could not produce, and direct gate tests missed the internal pipeline dataclass transition crash. Prevention now requires pipeline-level rejection tests, arbiter tests fed by the real gateway fact producer, a pytest collection hook rejecting empty/assertion-free SP5 modules, exact locked numbering here, and full-suite verification before the single checkpoint.
@@ -188,7 +217,12 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `408 passed, 1 existing Starlette/httpx deprecation warning`.
+- Full suite: `414 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 10 tests: `6 passed`; 10 consecutive runs each `6 passed`.
+- Round 9 repeat: 10 consecutive runs each `5 passed`.
+- Round 8 repeat: 10 consecutive runs each `9 passed`.
+- Round 7 repeat: 10 consecutive runs each `11 passed`.
+- Combined Round 5–10 temporal/recovery stability: 10 consecutive runs each `57 passed`.
 - Round 9 tests: `5 passed`; 10 consecutive runs each `5 passed`.
 - Round 8 repeat: 10 consecutive runs each `9 passed`.
 - Round 7 repeat: 10 consecutive runs each `11 passed`.
