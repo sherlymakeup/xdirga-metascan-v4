@@ -42,4 +42,11 @@ class RiskConfig(BaseModel):
             raise ValueError("account_age_budget_ms must be > 0")
         if self.gateway_timeout_s <= 0:
             raise ValueError("gateway_timeout_s must be > 0")
+        if self.verification_timeout_s <= 0:
+            raise ValueError("verification_timeout_s must be > 0")
+        if self.verify_poll_interval_ms <= 0:
+            raise ValueError("verify_poll_interval_ms must be > 0")
+        timeout_seconds = self.verify_poll_interval_ms / 1000
+        if timeout_seconds > self.verification_timeout_s:
+            raise ValueError(f"verify_poll_interval_ms ({self.verify_poll_interval_ms}ms) must not exceed verification_timeout_s ({self.verification_timeout_s}s) in seconds")
         return self

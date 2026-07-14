@@ -392,18 +392,20 @@ class Mt5Gateway:
             expected_tp = context.get("expected_tp")
             result["modify_executed"] = current is not None and (expected_sl is None or float(current.sl) == expected_sl) and (expected_tp is None or float(current.tp) == expected_tp)
         elif kind == "INTERNAL_ENTRY_MARKET":
-            symbol = str(context.get("symbol") or request.get("symbol") or "")
-            prefix = str(context.get("comment_prefix") or command_id[:17])
+            resolved_order = context.get("order") or request.get("order")
+            resolved_deal = context.get("deal") or request.get("deal")
+            symbol = str(request.get("symbol") or context.get("symbol") or "")
+            prefix = str(request.get("comment_prefix") or context.get("comment_prefix") or command_id[:17])
             matched = next((p for p in positions if str(p.symbol) == symbol and int(p.magic) == self._config.bot_magic and str(getattr(p, "comment", "")).startswith(prefix)), None)
             if matched is None:
                 matched = next((p for p in first_positions if str(p.symbol) == symbol and int(p.magic) == self._config.bot_magic and str(getattr(p, "comment", "")).startswith(prefix)), None)
-            correlated_deal = next((d for d in deals if (context.get("deal") and int(getattr(d, "ticket", 0)) == int(context["deal"])) or (context.get("order") and int(getattr(d, "order", 0)) == int(context["order"]))), None)
+            correlated_deal = next((d for d in deals if (resolved_deal and int(getattr(d, "ticket", 0)) == int(resolved_deal)) or (resolved_order and int(getattr(d, "order", 0)) == int(resolved_order))), None)
             position_ticket = None if matched is None else int(matched.ticket)
             if position_ticket is None and correlated_deal is not None:
                 candidate = int(getattr(correlated_deal, "position_id", 0) or 0)
                 if any(int(p.ticket) == candidate and int(p.magic) == self._config.bot_magic for p in positions):
                     position_ticket = candidate
-            result.update(positionExists=position_ticket is not None, positionTicket=position_ticket, order=context.get("order"), deal=context.get("deal"))
+            result.update(positionExists=position_ticket is not None, positionTicket=position_ticket, order=resolved_order, deal=resolved_deal)
         return result
 
     def _mutation_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], reason: str) -> Any:

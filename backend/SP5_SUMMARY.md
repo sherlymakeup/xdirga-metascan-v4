@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 4 blockers implemented, full suite green.
+Status: Round 5 blocker corrections implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -20,9 +20,9 @@ Status: Round 4 blockers implemented, full suite green.
 | R12 | Locked defaults, startup validation, units, `CALIBRATE-SP6` broker comment | config/default/comment tests |
 | R13 | Exact Decimal loss sizing with fresh facts, fail-closed metadata, fixed fixtures, risk invariant | risk sizing/property/fake metadata tests |
 | R14 | `INTERNAL_ENTRY_MARKET` internal identity; enum-pure transport status; internal GET byte-identical 404 | persistence and transport-isolation tests |
-| R15 | Symbol entry intent before send; one symbol lock; magic ownership; result order/deal capture and position correlation; journal persist before send, update tickets on mutation result and verification, clear on terminal | gateway context and entry verification tests; durable entry intent journal tests |
-| R16 | Entry intents persisted and recovered into uncertainty verification; restart creates async recovery task with temporal verify; drives delayed broker convergence to terminal resolution; no manual DB insertion | restart recovery tests through production lifecycle |
-| R17 | Locks release on all determinate rejections; uncertainty retains lock; temporal verify accepts False only after >=3 polls and elapsed >30% budget | pipeline-level gate rejection, uncertainty tests, exhausted budget retention tests |
+| R15 | Symbol intent persists before send; successful send without confirmed position remains `EXECUTION_UNKNOWN`; order/deal persist before verification; position persists and identity upgrades before terminal cleanup | `test_sp5_r5_entry_unknown.py`; durable entry intent tests |
+| R16 | Restart rehydrates persisted symbol/order/deal/position correlation, persists explicit `EXECUTION_UNKNOWN`, emits reconciliation detection, then schedules production verification; unresolved recovery retains durable state and alerts | `test_sp5_r5_recovery_rehydration.py` |
+| R17 | Determinate success releases locks; ambiguity retains lock; negative verification waits for the full monotonic budget and configured poll interval | `test_sp5_r5_temporal_verdict.py`; `test_sp5_r5_temporal_interval.py`; exhausted-budget tests |
 | R18 | Full close rereads volume; partial floor/min/dust rules; cancel mapping | gateway mutation tests |
 | R19 | Protection update preserves omitted broker field atomically | bidirectional protection tests |
 | R20 | Bulk/emergency bot-only children, continue-on-error, deterministic summary, UNKNOWN handling and CRITICAL failures | bulk/emergency integration tests |
@@ -87,6 +87,16 @@ Precedence: `VALIDATION_FAILED` → `RISK_FRACTION_EXCEEDS_MAX` → `ENTRY_EXPOS
 | Terminal entry cleanup | Lock + pending only | Lock + pending + journal intent cleared |
 | Verify temporal proof | Fabricated dicts | Real FakeMt5 + Mt5Gateway call_log assertions |
 
+## Round 5 blocker mapping
+
+| Blocker | Production change | Exact tests |
+|---|---|---|
+| R15 successful-entry lifecycle | `command_pipeline.py` persists order/deal, routes accepted entries without confirmed position through `EXECUTION_UNKNOWN`, retains lock/intent during ambiguity, persists position and upgrades identity before cleanup | `test_sp5_r5_entry_unknown.py` |
+| R16 restart recovery | `command_pipeline.py` rehydrates persisted broker correlation, persists `EXECUTION_UNKNOWN`, emits reconciliation detection, runs production verifier, retains durable state and alerts when unresolved | `test_sp5_r5_recovery_rehydration.py` |
+| Broker correlation after restart | `gateway.py` consumes persisted request order/deal/position/symbol correlation when in-memory verification context is absent | `test_sp5_r5_recovery_rehydration.py` |
+| R12 temporal startup validation | `risk_config.py` rejects nonpositive timeout/interval and interval greater than timeout | `test_sp5_r5_risk_config_validation.py` |
+| Full verification budget | `command_pipeline.py` uses a monotonic deadline, configured temporal spacing, immediate positive resolution, and defers negative terminalization until deadline | `test_sp5_r5_temporal_verdict.py`; `test_sp5_r5_temporal_interval.py` |
+
 ## RCA and mechanical prevention
 
 The approved design was previously summarized instead of traced mechanically through production boundaries. Tests injected verdict dictionaries that the real gateway could not produce, and direct gate tests missed the internal pipeline dataclass transition crash. Prevention now requires pipeline-level rejection tests, arbiter tests fed by the real gateway fact producer, a pytest collection hook rejecting empty/assertion-free SP5 modules, exact locked numbering here, and full-suite verification before the single checkpoint.
@@ -109,11 +119,13 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `357 passed, 1 existing Starlette/httpx deprecation warning`.
-- Round 4 new tests: `24 passed`.
-- Real gateway temporal verification: temporal poll loop with >=2 polls + >=1 history_deals_get per verify call; call timestamps recorded; False accepted only after >=3 polls and elapsed >30% of verification budget.
-- Delayed broker convergence: mutation timeout → temporal verify loop → broker state changes → exact COMPLETED with lock released; tested for close, partial, modify, entry.
-- Exhausted budget: deadline reached → FAILED with lock retained; CRITICAL alert emitted.
-- Durable entry intent: journal `entry_intents` table persistence before mutation send; order/deal/position ticket updates on mutation result and verification; cleared on terminal.
-- Restart recovery: killed first pipeline → second recovers entry intent from journal, loads InternalCommandRecord from commands DB, creates async recovery task that drives temporal verification → delayed position → COMPLETED with journal/registry/lock cleared.
-- A7 gate reasons: exact `RISK_BUDGET_BELOW_MIN_VOLUME` and `VOLUME_ABOVE_BROKER_MAX` with deterministic multi-breach precedence.
+- Full suite: `378 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 5 targeted blocker suite: `21 passed`.
+- Schema hash suite: `5 passed`.
+- Compile check: `uv run python -m compileall -q src tests` passed.
+- Diff check: `git diff --check` passed.
+- Temporal verification uses monotonic full-budget deadlines and configured poll spacing; delayed convergence after 30% of the window resolves `COMPLETED`.
+- Successful entry without visible position persists order/deal and remains `EXECUTION_UNKNOWN`; duplicate symbol entry is rejected while lock and intent remain durable.
+- Position discovery persists `position_ticket`, upgrades symbol identity to ticket, then completes and cleans durable state.
+- Restart recovery persists explicit `EXECUTION_UNKNOWN`, emits reconciliation detection, rehydrates persisted broker tickets into production verification, and either resolves or retains intent/lock with a CRITICAL alert.
+- A7 gate reasons remain covered: exact `RISK_BUDGET_BELOW_MIN_VOLUME` and `VOLUME_ABOVE_BROKER_MAX` with deterministic multi-breach precedence.

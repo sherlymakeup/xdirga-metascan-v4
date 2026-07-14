@@ -188,11 +188,12 @@ class _EntryGateway:
     def __init__(self) -> None:
         self._mutation_calls: list[dict] = []
         self._next_retcode: int = 10009
+        self._position_exists: bool | None = True
 
     def mutation(self, command_id: str, kind: str, target_id: str | None, request: dict, *, reason: str = "MANUAL") -> asyncio.Future:
         self._mutation_calls.append({"command_id": command_id, "kind": kind, "target_id": target_id, "request": request, "reason": reason})
         fut: asyncio.Future = asyncio.Future()
-        fut.set_result(type("Result", (), {"retcode": self._next_retcode})())
+        fut.set_result(type("Result", (), {"retcode": self._next_retcode, "order": 12345, "deal": 67890})())
         return fut
 
     def success_retcodes(self) -> frozenset[int]:
@@ -201,9 +202,12 @@ class _EntryGateway:
     def set_retcode(self, retcode: int) -> None:
         self._next_retcode = retcode
 
+    def set_position_exists(self, exists: bool | None) -> None:
+        self._position_exists = exists
+
     def verify(self, target_id: str | None) -> asyncio.Future:
         fut: asyncio.Future = asyncio.Future()
-        fut.set_result({"positionExists": None})
+        fut.set_result({"positionExists": self._position_exists})
         return fut
 
 

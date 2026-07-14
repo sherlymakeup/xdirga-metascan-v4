@@ -98,14 +98,14 @@ async def test_entry_intent_ticket_updates_on_mutation_result(tmp_path: Path) ->
     pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(allowed_symbols=("XAUUSDm",), gateway_timeout_s=5), pending=pending, facts=facts, bot_magic=240101, journal=journal)
     pipeline.start()
     try:
-        fake.set_positions([{"ticket": 3001, "symbol": "XAUUSDm", "magic": 240101, "volume": 0.1, "price_open": 2300.0, "price_current": 2300.5, "sl": 2295.0, "tp": 2320.0, "profit": 5.0, "swap": 0.0, "commission": 0.0, "type": 0, "time_msc": 0, "identifier": 3001, "comment": ""}])
         req = InternalEntryRequest(symbol="XAUUSDm", side="BUY", stopLoss=2295.0)
         record = await pipeline.submit_internal(req, idempotency_key="entry-ticket-1")
-        await asyncio.sleep(0.5)
+        await asyncio.sleep(0.15)
+        fake.set_positions([{"ticket": 3001, "symbol": "XAUUSDm", "magic": 240101, "volume": 0.1, "price_open": 2300.0, "price_current": 2300.5, "sl": 2295.0, "tp": 2320.0, "profit": 5.0, "swap": 0.0, "commission": 0.0, "type": 0, "time_msc": 0, "identifier": 3001, "comment": record.command_id[:17]}])
+        await asyncio.sleep(1.5)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
         assert row is not None
         assert row[0] == "COMPLETED"
-        # Verify journal had tickets during lifecycle
         intents = journal.run_on_writer(lambda c: c.execute("SELECT * FROM entry_intents WHERE symbol='XAUUSDm'").fetchall())
         assert len(intents) == 0
     finally:
