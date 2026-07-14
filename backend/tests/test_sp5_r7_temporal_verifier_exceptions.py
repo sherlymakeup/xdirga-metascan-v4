@@ -220,7 +220,7 @@ async def test_e_pending_timeout_drains_late_source_and_wrapper_exception(monkey
     source.set_exception(RuntimeError("late timeout"))
     await asyncio.sleep(0)
     await asyncio.sleep(0)
-    assert source.exception_calls >= 2
+    assert source.exception_calls == 1
     assert wrapped.exception_calls == 1
 
 
@@ -250,7 +250,7 @@ async def test_f_cancellation_propagates_without_retry_and_production_drains_exc
         await asyncio.sleep(0)
         await asyncio.sleep(0)
         assert gateway.calls == 1
-        assert source.exception_calls >= 2
+        assert source.exception_calls == 1
         assert unhandled == []
     finally:
         loop.set_exception_handler(previous_handler)

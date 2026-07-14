@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 7 final temporal verifier hardening implemented; verification evidence below.
+Status: Round 8 final verifier lifecycle cleanup implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -133,6 +133,22 @@ Final behavior: the verifier explicitly separates idle, pending, successful comp
 
 Round 7 stability: runs 1–10 each `11 passed`. Combined temporal/recovery stability: runs 1–10 each `37 passed`.
 
+## Round 8 verifier lifecycle cleanup
+
+Round 7 boundary root cause: when source completion and `wait_for` timeout shared a scheduler boundary, the source exception could be consumed while the wrapped or shield future retained the same exception. Pending sources completing after logical timeout had the same ownership gap.
+
+Cleanup design: each attempt has explicit ownership. `wrap_future` consumes the source completion, `shield` consumes the wrapped completion, and verifier retirement consumes or schedules a drain for the terminal waiting future. Cancelled shield boundaries inspect the completed wrapper; pending wrapperless sources remain single-flight and are drained on timeout or cancellation. Cleanup never awaits beyond the monotonic budget and never submits after deadline.
+
+| Production behavior | Exact tests |
+|---|---|
+| Same-turn boundary exception drains source, wrapper, shield | `test_sp5_r8_temporal_verifier_retirement.py::test_same_turn_source_exception_and_timeout_retires_every_future` |
+| Pending deadline then late exception | `test_sp5_r8_temporal_verifier_retirement.py::test_pending_at_deadline_returns_and_late_exception_retires_every_future` |
+| Cancelled shield boundary success/error | Round 8 cancelled-waiting boundary tests |
+| Source `TimeoutError` before deadline retries | Round 8 source-timeout retry test |
+| Wrapper construction failure: pending, success, error, cancellation | Round 8 wrapper-failure lifecycle tests |
+
+Round 8 stability: runs 1–10 each `9 passed`. Round 7 stability: runs 1–10 each `11 passed`. Combined temporal/recovery stability: runs 1–10 each `46 passed`. SP6 was not started.
+
 ## RCA and mechanical prevention
 
 The approved design was previously summarized instead of traced mechanically through production boundaries. Tests injected verdict dictionaries that the real gateway could not produce, and direct gate tests missed the internal pipeline dataclass transition crash. Prevention now requires pipeline-level rejection tests, arbiter tests fed by the real gateway fact producer, a pytest collection hook rejecting empty/assertion-free SP5 modules, exact locked numbering here, and full-suite verification before the single checkpoint.
@@ -155,7 +171,10 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `394 passed, 1 existing Starlette/httpx deprecation warning`.
+- Full suite: `403 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 8 tests: `9 passed`; 10 consecutive runs each `9 passed`.
+- Round 7 repeat: 10 consecutive runs each `11 passed`.
+- Combined Round 5–8 temporal/recovery stability: 10 consecutive runs each `46 passed`.
 - Round 7 tests: `11 passed`; 10 consecutive runs each `11 passed`.
 - Combined temporal/recovery stability: 10 consecutive runs each `37 passed`.
 - Delayed-convergence matrix: `24 passed`.

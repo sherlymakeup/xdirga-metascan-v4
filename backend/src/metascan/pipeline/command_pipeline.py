@@ -427,6 +427,18 @@ class CommandPipeline:
             if not future.cancelled():
                 future.exception()
 
+        def retire(waiting: asyncio.Future, wrapped: asyncio.Future) -> tuple[bool, Any, Exception | None]:
+            future = wrapped if waiting.cancelled() else waiting
+            if not future.done():
+                future.add_done_callback(drain)
+                return False, None, None
+            if future.cancelled():
+                return False, None, None
+            error = future.exception()
+            if error is not None:
+                return True, None, error
+            return True, future.result(), None
+
         while True:
             now = loop.time()
             if active is None:
@@ -436,48 +448,74 @@ class CommandPipeline:
                     if remaining > 0:
                         await asyncio.sleep(remaining)
                     break
-                if next_start > now:
+                while next_start > now:
                     await asyncio.sleep(next_start - now)
-                now = loop.time()
+                    now = loop.time()
                 if now >= deadline:
                     break
                 call_times.append(now)
                 polls += 1
                 try:
                     active = self._verification_future(command_id, kind, target, payload)
-                    wrapped = asyncio.wrap_future(active)
                 except Exception as exc:
                     logger.warning("Temporal verification submission failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
                     active = None
-                    wrapped = None
                     continue
-
-            assert active is not None and wrapped is not None
-            waiting = asyncio.shield(wrapped)
-            try:
-                result = await asyncio.wait_for(waiting, timeout=max(0, deadline - loop.time()))
-            except asyncio.CancelledError:
-                active.add_done_callback(drain)
-                wrapped.add_done_callback(drain)
-                waiting.add_done_callback(drain)
-                raise
-            except asyncio.TimeoutError:
-                if not active.done():
-                    active.add_done_callback(drain)
-                    waiting.add_done_callback(drain)
-                    break
                 try:
-                    result = active.result()
+                    wrapped = asyncio.wrap_future(active)
+                except Exception as exc:
+                    logger.warning("Temporal verification wrapper failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
+                    wrapped = None
+
+            assert active is not None
+            if wrapped is None:
+                if not active.done():
+                    remaining = deadline - loop.time()
+                    if remaining > 0:
+                        try:
+                            await asyncio.sleep(min(interval_s, remaining))
+                        except asyncio.CancelledError:
+                            active.add_done_callback(drain)
+                            raise
+                    if not active.done():
+                        if loop.time() >= deadline:
+                            active.add_done_callback(drain)
+                            break
+                        continue
+                error = active.exception()
+                if error is not None:
+                    logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, error)
+                    active = None
+                    continue
+                result = active.result()
+            else:
+                waiting = asyncio.shield(wrapped)
+                try:
+                    result = await asyncio.wait_for(waiting, timeout=max(0, deadline - loop.time()))
+                except asyncio.CancelledError:
+                    retire(waiting, wrapped)
+                    raise
+                except asyncio.TimeoutError:
+                    for _ in range(2):
+                        if not active.done() or waiting.done():
+                            break
+                        await asyncio.sleep(0)
+                    completed, boundary_result, boundary_error = retire(waiting, wrapped)
+                    if not completed:
+                        break
+                    if boundary_error is not None:
+                        logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, boundary_error)
+                        active = None
+                        wrapped = None
+                        if isinstance(boundary_error, asyncio.TimeoutError) and loop.time() < deadline:
+                            continue
+                        break
+                    result = boundary_result
                 except Exception as exc:
                     logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
                     active = None
                     wrapped = None
-                    break
-            except Exception as exc:
-                logger.warning("Temporal verification failed: command_id=%s kind=%s error=%s", command_id, kind, exc)
-                active = None
-                wrapped = None
-                continue
+                    continue
 
             executed, vreason = verdict(kind, result)
             last_executed, last_reason, last_result = executed, vreason, result
