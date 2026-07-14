@@ -646,6 +646,7 @@ class _VerifyingGateway:
         self._mutation_calls: list[dict] = []
         self._verify_results: list[dict | float] = []
         self._block_seconds: float | None = None
+        self._last_verify: dict | None = None
 
     def mutation(self, command_id: str, kind: str, target_id: str | None, request: dict, *, reason: str = "MANUAL") -> asyncio.Future:
         self._mutation_calls.append({"command_id": command_id, "kind": kind, "target_id": target_id, "request": request, "reason": reason})
@@ -664,7 +665,10 @@ class _VerifyingGateway:
             item = self._verify_results.pop(0)
             if isinstance(item, (int, float)):
                 return fut
+            self._last_verify = item
             fut.set_result(item)
+        elif self._last_verify is not None:
+            fut.set_result(self._last_verify)
         else:
             fut.set_result({"positionExists": None})
         return fut
@@ -690,7 +694,7 @@ async def test_unknown_verifies_executed_releases_lock(tmp_path: Path) -> None:
     gw.script_verify(positionExists=False)  # position absent → close executed
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1, verification_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")
@@ -720,7 +724,7 @@ async def test_unknown_verifies_never_existed_releases_lock(tmp_path: Path) -> N
     gw.script_verify(positionExists=True)  # position still there → close not executed
     pending = PendingIntentRegistry()
     facts = _make_facts()
-    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
+    pipeline = CommandPipeline(bus=bus, gateway=gw, risk_config=RiskConfig(gateway_timeout_s=0.1, verification_timeout_s=0.1), pending=pending, facts=facts, bot_magic=999)
     pipeline.start()
     try:
         req = CommandRequest(kind="position.close", target_id="1001")

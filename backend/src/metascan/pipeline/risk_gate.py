@@ -101,7 +101,7 @@ def run_gates(request: InternalEntryRequest, facts: RuntimeFacts, config: RiskCo
         loss_per_lot = (distance / tick_size) * tick_value_loss
         raw_volume = risk_cash / loss_per_lot
         volume = (raw_volume // volume_step) * volume_step
-        if not all(value.is_finite() and value > 0 for value in (risk_cash, distance, loss_per_lot, raw_volume, volume)) or volume * loss_per_lot > risk_cash: raise InvalidOperation
+        if not all(value.is_finite() and value > 0 for value in (risk_cash, distance, loss_per_lot, raw_volume)) or volume * loss_per_lot > risk_cash: raise InvalidOperation
     except (InvalidOperation, DivisionByZero, TypeError, ValueError):
         if provider: provider.unlock_entity(scope)
         return _result(False, "SIZING_METADATA_INVALID", trace, classification=classified[0], target_scope=scope)

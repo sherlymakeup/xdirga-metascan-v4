@@ -1,16 +1,16 @@
 # SP5 — Locked Ruling Coverage
 
-Status: implementation correction checkpoint pending final verification.
+Status: Round 4 blockers implemented, full suite green.
 
 ## Coverage: R1–R27
 
 | Ruling | Exact locked scope | Evidence |
 |---|---|---|
 | R1 | Exact eight-gate order; reducing commands bypass entry-only gates; pending intent then send/outcome | `risk_gate.GATE_NAMES`; gate trace and multi-breach tests |
-| R2 | No blind retry; shielded timeout; verification-only reads; exhausted verification fails CRITICAL with retained lock | pipeline uncertainty tests; real gateway verification tests |
-| R3 | MT5 mutation only in gateway; gateway-thread identity; serialized ingress | seam static/runtime/ingress tests; SP3 lineage comment retained |
+| R2 | No blind retry; shielded timeout; verification-only reads; exhausted verification fails CRITICAL with retained lock; temporal polling with >=2 polls + history | pipeline uncertainty tests; real gateway temporal verification tests |
+| R3 | MT5 mutation only in gateway; gateway-thread identity; serialized ingress; temporal verify via submit_command same queue | seam static/runtime/ingress tests; SP3 lineage comment retained |
 | R4 | `mutationInFlight` excluded from staleness SLO | health and delayed-send tests |
-| R5 | Floor to step; below broker minimum uses `RISK_BUDGET_BELOW_MIN_VOLUME`; never round up | Decimal sizing tests |
+| R5 | Floor to step; below broker minimum uses `RISK_BUDGET_BELOW_MIN_VOLUME`; never round up | Decimal sizing tests; A7 dedicated tests |
 | R6 | Internal canonical `request_json`, atomic with `command.created`, absent from REST | persistence/idempotency tests |
 | R7 | Global idempotency replay/conflict semantics | transport/internal persistence tests |
 | R8 | Transport/internal XOR DB records with shared indexed identity | journal constraint and internal persistence tests |
@@ -20,9 +20,9 @@ Status: implementation correction checkpoint pending final verification.
 | R12 | Locked defaults, startup validation, units, `CALIBRATE-SP6` broker comment | config/default/comment tests |
 | R13 | Exact Decimal loss sizing with fresh facts, fail-closed metadata, fixed fixtures, risk invariant | risk sizing/property/fake metadata tests |
 | R14 | `INTERNAL_ENTRY_MARKET` internal identity; enum-pure transport status; internal GET byte-identical 404 | persistence and transport-isolation tests |
-| R15 | Symbol entry intent before send; one symbol lock; magic ownership; result order/deal capture and position correlation | gateway context and entry verification tests |
-| R16 | Entry intents persisted and recovered into uncertainty verification | restart recovery tests |
-| R17 | Locks release on all determinate rejections; uncertainty retains lock | pipeline-level gate rejection and uncertainty tests |
+| R15 | Symbol entry intent before send; one symbol lock; magic ownership; result order/deal capture and position correlation; journal persist before send, update tickets on mutation result and verification, clear on terminal | gateway context and entry verification tests; durable entry intent journal tests |
+| R16 | Entry intents persisted and recovered into uncertainty verification; restart creates async recovery task with temporal verify; drives delayed broker convergence to terminal resolution; no manual DB insertion | restart recovery tests through production lifecycle |
+| R17 | Locks release on all determinate rejections; uncertainty retains lock; temporal verify accepts False only after >=3 polls and elapsed >30% budget | pipeline-level gate rejection, uncertainty tests, exhausted budget retention tests |
 | R18 | Full close rereads volume; partial floor/min/dust rules; cancel mapping | gateway mutation tests |
 | R19 | Protection update preserves omitted broker field atomically | bidirectional protection tests |
 | R20 | Bulk/emergency bot-only children, continue-on-error, deterministic summary, UNKNOWN handling and CRITICAL failures | bulk/emergency integration tests |
@@ -44,7 +44,7 @@ Status: implementation correction checkpoint pending final verification.
 | A4 | Fresh gateway-thread `orders_get` at sweep/rescan; foreign pending observed untouched | bulk/emergency fake tests |
 | A5 | Decimal at boundaries; positive floor arithmetic; one gateway float conversion | sizing and request tests |
 | A6 | SP3 no-send test superseded by cited SP5 seam invariant | gateway lineage comment and seam tests |
-| A7 | Cause-specific gate 6/7 reason map | dedicated reason tests and deterministic evaluation order |
+| A7 | Cause-specific gate 6/7 reason map with deterministic multi-breach precedence | dedicated A7 reason tests (`test_sp5_a7_gate_reasons.py`) |
 
 ## A7 reason map
 
@@ -55,6 +55,37 @@ Status: implementation correction checkpoint pending final verification.
 - Arithmetic or sizing metadata failure: `SIZING_METADATA_INVALID`.
 - Floored volume below broker minimum: `RISK_BUDGET_BELOW_MIN_VOLUME`.
 - Computed volume above broker maximum: `VOLUME_ABOVE_BROKER_MAX`.
+
+Precedence: `VALIDATION_FAILED` → `RISK_FRACTION_EXCEEDS_MAX` → `ENTRY_EXPOSURE_LIMIT`/`DAILY_LOSS_LIMIT_REACHED` → `SIZING_METADATA_INVALID` → `RISK_BUDGET_BELOW_MIN_VOLUME` → `VOLUME_ABOVE_BROKER_MAX`. Volume excluded from positive-finite check so floor-to-zero hits `RISK_BUDGET_BELOW_MIN_VOLUME`.
+
+## Round 4 changes
+
+### Production code
+
+| File | Change |
+|---|---|
+| `src/metascan/pipeline/risk_gate.py` | Removed `volume` from positive-finite check so floor-to-zero yields `RISK_BUDGET_BELOW_MIN_VOLUME` instead of `SIZING_METADATA_INVALID` |
+| `src/metascan/pipeline/command_pipeline.py` | Async temporal verification loop; durable intent persistence before send; order/deal/position updates; restart recovery task; registry ticket upgrade; terminal journal/registry/symbol-lock cleanup |
+| `src/metascan/pipeline/risk_config.py` | Validated temporal verification poll interval configuration |
+
+### New test files
+
+| File | Tests | Covers |
+|---|---|---|
+| `tests/test_sp5_temporal_verification_budget.py` | 8 | Default 10s budget; real pipeline delayed convergence for close/partial/modify/entry; exhausted-budget lock retention |
+| `tests/test_sp5_durable_entry_intent.py` | 4 | Journal persistence before send; clear on terminal; restart restore; kill/restart integration |
+| `tests/test_sp5_entry_resolution_cleanup.py` | 4 | Ticket upgrade on success; terminal clears lock for new entry; stale lock retention; duplicate lock rejection |
+| `tests/test_sp5_a7_gate_reasons.py` | 8 | `RISK_BUDGET_BELOW_MIN_VOLUME`; `VOLUME_ABOVE_BROKER_MAX`; multi-breach precedence (risk fraction > exposure > daily loss > metadata > below min > above max); forex/XAU calibration fixtures |
+
+### Test mapping for changed behavior
+
+| Behavior | Before | After |
+|---|---|---|
+| Volume floor-to-zero reason | `SIZING_METADATA_INVALID` (bug) | `RISK_BUDGET_BELOW_MIN_VOLUME` (correct) |
+| Entry intent journal persistence | In-memory only | Journal before send, cleared on terminal |
+| Entry intent restart recovery | Manual DB insertion in test | Production lifecycle through `_recover_entry_intents` |
+| Terminal entry cleanup | Lock + pending only | Lock + pending + journal intent cleared |
+| Verify temporal proof | Fabricated dicts | Real FakeMt5 + Mt5Gateway call_log assertions |
 
 ## RCA and mechanical prevention
 
@@ -78,7 +109,11 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `333 passed, 1 existing Starlette/httpx deprecation warning`.
-- Focused production-path suite: `119 passed`.
-- Real gateway fact-producer integration: partial, protection, and entry facts consumed by `verdict()`.
-- Pipeline-level gate rejection: canonical gate reason, no infrastructure alert, healthy consumer.
+- Full suite: `357 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 4 new tests: `24 passed`.
+- Real gateway temporal verification: temporal poll loop with >=2 polls + >=1 history_deals_get per verify call; call timestamps recorded; False accepted only after >=3 polls and elapsed >30% of verification budget.
+- Delayed broker convergence: mutation timeout → temporal verify loop → broker state changes → exact COMPLETED with lock released; tested for close, partial, modify, entry.
+- Exhausted budget: deadline reached → FAILED with lock retained; CRITICAL alert emitted.
+- Durable entry intent: journal `entry_intents` table persistence before mutation send; order/deal/position ticket updates on mutation result and verification; cleared on terminal.
+- Restart recovery: killed first pipeline → second recovers entry intent from journal, loads InternalCommandRecord from commands DB, creates async recovery task that drives temporal verification → delayed position → COMPLETED with journal/registry/lock cleared.
+- A7 gate reasons: exact `RISK_BUDGET_BELOW_MIN_VOLUME` and `VOLUME_ABOVE_BROKER_MAX` with deterministic multi-breach precedence.

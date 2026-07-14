@@ -113,6 +113,8 @@ class CommandPipeline:
         self._journal = journal or (bus._journal if hasattr(bus, "_journal") else None)
         self._healthy = True
         self._failure_reason: str | None = None
+        self._recovery_tasks: set[asyncio.Task[None]] = set()
+        self._recovery_requests: dict[str, InternalEntryRequest] = {}
 
     @property
     def healthy(self) -> bool:
@@ -167,11 +169,66 @@ class CommandPipeline:
         except Exception:
             return
         for intent in intents:
-            scope = f"entry:{intent['symbol']}"
+            sym = str(intent["symbol"])
+            cid = str(intent["command_id"])
+            scope = f"entry:{sym}"
             self._locks.add(scope)
-            self._pending.register_entry(str(intent["symbol"]), str(intent["command_id"]))
+            self._pending.register_entry(sym, cid)
+            record = self._load_internal_record(cid)
+            if record is None:
+                continue
+            try:
+                req = InternalEntryRequest.model_validate_json(record.request_json)
+                self._recovery_requests[cid] = req
+            except Exception:
+                req = None
+            task = asyncio.create_task(self._recovery_verify_internal(record, sym, req))
+            self._recovery_tasks.add(task)
+            task.add_done_callback(lambda t: self._recovery_tasks.discard(t))
+
+    def _load_internal_record(self, command_id: str) -> InternalCommandRecord | None:
+        if self._journal is None:
+            return None
+        try:
+            row = self._journal.run_on_writer(
+                lambda conn: conn.execute(
+                    "SELECT command_id, client_request_id, idempotency_key, correlation_id, kind, target_id, "
+                    "state, created_at, updated_at, origin, execution_kind, request_json, "
+                    "progress, current_step, message, error_code, internal_record_json "
+                    "FROM commands WHERE command_id=?", (command_id,)
+                ).fetchone()
+            )
+        except Exception:
+            return None
+        if row is None:
+            return None
+        fields = dict(row)
+        record = InternalCommandRecord(
+            command_id=str(fields.get("command_id", command_id)),
+            client_request_id=str(fields.get("client_request_id", "")),
+            idempotency_key=str(fields.get("idempotency_key", "")),
+            correlation_id=str(fields.get("correlation_id", "")),
+            kind=str(fields.get("kind", "INTERNAL_ENTRY_MARKET")),
+            target_id=str(fields.get("target_id")) if fields.get("target_id") else None,
+            state=str(fields.get("state", "EXECUTION_UNKNOWN")),
+            created_at=str(fields.get("created_at", _now())),
+            updated_at=str(fields.get("updated_at", _now())),
+            origin=str(fields.get("origin", "INTERNAL")),
+            execution_kind=str(fields.get("execution_kind", "INTERNAL_ENTRY_MARKET")),
+            request_json=str(fields.get("request_json", "{}")),
+            progress=fields.get("progress"),
+            current_step=str(fields.get("current_step")) if fields.get("current_step") else None,
+            message=str(fields.get("message")) if fields.get("message") else None,
+            error_code=str(fields.get("error_code")) if fields.get("error_code") else None,
+        )
+        return record
 
     async def stop(self) -> None:
+        for t in set(self._recovery_tasks):
+            t.cancel()
+        if self._recovery_tasks:
+            await asyncio.gather(*self._recovery_tasks, return_exceptions=True)
+            self._recovery_tasks.clear()
         if self._task:
             self._task.cancel()
             try: await self._task
@@ -313,7 +370,10 @@ class CommandPipeline:
 
     async def _execute_internal(self, record: InternalCommandRecord, kind: str, payload: dict[str, Any], scope: str) -> None:
         self._locks.add(scope)
-        if kind == "INTERNAL_ENTRY_MARKET": self._pending.register_entry(str(payload["symbol"]), record.command_id)
+        if kind == "INTERNAL_ENTRY_MARKET":
+            self._pending.register_entry(str(payload["symbol"]), record.command_id)
+            if self._journal is not None:
+                self._journal.register_entry_intent(symbol=str(payload["symbol"]), command_id=record.command_id, state="PENDING")
         record = await self._transition_internal(record, "ACCEPTED", event_type="command.accepted")
         record = await self._transition_internal(record, "IN_PROGRESS", event_type="command.progress")
         target = record.target_id
@@ -323,6 +383,16 @@ class CommandPipeline:
             await self._unknown_internal(record, kind, scope, target, "OUTCOME_AMBIGUOUS", payload); return
         except Exception:
             await self._unknown_internal(record, kind, scope, target, "BROKER_DISCONNECT_MID_CALL", payload); return
+        if kind == "INTERNAL_ENTRY_MARKET" and self._journal is not None:
+            try:
+                self._journal.update_entry_intent(
+                    str(payload.get("symbol", "")),
+                    state="PENDING",
+                    order_ticket=getattr(result, "order", None),
+                    deal_ticket=getattr(result, "deal", None),
+                )
+            except Exception:
+                pass
         if getattr(result, "retcode", None) in self._gateway.success_retcodes():
             await self._transition_internal(record, "COMPLETED", event_type="command.completed")
         elif getattr(result, "retcode", None) is not None:
@@ -336,22 +406,94 @@ class CommandPipeline:
         except TypeError:
             return self._gateway.verify(target)
 
+    async def _temporal_verify(self, command_id: str, kind: str, target: str | None, payload: dict[str, Any], *, timeout: float, poll_interval_ms: int = 50) -> tuple[bool | None, str | None, dict[str, Any], int, list[float]]:
+        """Loop verify with temporal separation until determinate verdict or deadline.
+
+        True (executed) accepted immediately.
+        False (not executed) accepted only when elapsed > 30% of budget AND >=3 polls,
+        giving broker time to converge.
+        None → continue polling until deadline.
+        """
+        deadline = asyncio.get_event_loop().time() + timeout
+        min_false_time = asyncio.get_event_loop().time() + timeout * 0.3
+        polls = 0
+        call_times: list[float] = []
+        while True:
+            now = asyncio.get_event_loop().time()
+            if now >= deadline:
+                return None, None, {}, polls, call_times
+            remaining = deadline - now
+            poll_timeout = min(poll_interval_ms / 1000.0, remaining)
+            if poll_timeout <= 0:
+                return None, None, {}, polls, call_times
+            call_times.append(now)
+            future = self._verification_future(command_id, kind, target, payload)
+            try:
+                result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(future)), timeout=poll_timeout)
+            except asyncio.TimeoutError:
+                polls += 1
+                continue
+            polls += 1
+            executed, vreason = verdict(kind, result)
+            if executed is True:
+                return executed, vreason, result, polls, call_times
+            if executed is False and polls >= 3 and now >= min_false_time:
+                return executed, vreason, result, polls, call_times
+            await asyncio.sleep(max(0.001, poll_interval_ms / 1000.0 * 0.2))
+
+    async def _recovery_verify_internal(self, record: InternalCommandRecord, symbol: str, request: InternalEntryRequest | None = None) -> None:
+        """Async recovery task: drive temporal verification for a recovered entry intent."""
+        kind = "INTERNAL_ENTRY_MARKET"
+        scope = f"entry:{symbol}"
+        payload = {"symbol": symbol}
+        executed, vreason, result, polls, call_times = await self._temporal_verify(
+            record.command_id, kind, None, payload,
+            timeout=self._risk_config.verification_timeout_s,
+            poll_interval_ms=self._risk_config.verify_poll_interval_ms,
+        )
+        if executed is True:
+            await self._bus.publish(self._envelope(record, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed"}), mutates_state=False)
+            await self._transition_internal(record, "COMPLETED", event_type="command.completed")
+            pt = result.get("positionTicket") if isinstance(result, dict) else None
+            order = result.get("order") if isinstance(result, dict) else None
+            deal = result.get("deal") if isinstance(result, dict) else None
+            if self._journal is not None:
+                self._journal.update_entry_intent(symbol, state="RESOLVED", order_ticket=order, deal_ticket=deal, position_ticket=pt)
+            if pt:
+                self._pending.upgrade_entry(symbol, int(pt))
+            self._release(scope, None, payload)
+        elif executed is False:
+            await self._transition_internal(record, "FAILED", reason=vreason or "BROKER_REJECTED", event_type="command.failed")
+            self._release(scope, None, payload)
+
     async def _unknown_internal(self, record: InternalCommandRecord, kind: str, scope: str, target: str | None, reason: str, payload: dict[str, Any] | None = None) -> None:
         await self._transition_internal(record, "EXECUTION_UNKNOWN", reason=reason, event_type="command.execution_unknown")
         await self._bus.publish(self._envelope(record, "reconciliation.issue.detected", "EXECUTION_UNKNOWN", reason, {"targetScope": scope}), mutates_state=False)
         if target and target.isdigit(): self._pending.retain_for_reconciliation(int(target))
-        try:
-            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._verification_future(record.command_id, kind, target, payload or {}))), timeout=self._risk_config.verification_timeout_s)
-            executed, vreason = verdict(kind, result)
-            if executed is True:
-                await self._bus.publish(self._envelope(record, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed"}), mutates_state=False)
-                await self._transition_internal(record, "COMPLETED", event_type="command.completed")
-                self._release(scope, target, {})
-            elif executed is False:
-                await self._transition_internal(record, "FAILED", reason=vreason or "BROKER_REJECTED", event_type="command.failed")
-                self._release(scope, target, {})
-            # else: verdict=None → stay EXECUTION_UNKNOWN (ambiguous, not resolved)
-        except asyncio.TimeoutError:
+        executed, vreason, result, polls, call_times = await self._temporal_verify(
+            record.command_id, kind, target, payload or {},
+            timeout=self._risk_config.verification_timeout_s,
+            poll_interval_ms=self._risk_config.verify_poll_interval_ms,
+        )
+        if executed is True:
+            await self._bus.publish(self._envelope(record, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed", "polls": polls}), mutates_state=False)
+            await self._transition_internal(record, "COMPLETED", event_type="command.completed")
+            if kind == "INTERNAL_ENTRY_MARKET" and self._journal is not None:
+                try:
+                    sym = str(payload.get("symbol", ""))
+                    pt = result.get("positionTicket") if isinstance(result, dict) else None
+                    order = result.get("order") if isinstance(result, dict) else None
+                    deal = result.get("deal") if isinstance(result, dict) else None
+                    self._journal.update_entry_intent(sym, state="RESOLVED", order_ticket=order, deal_ticket=deal, position_ticket=pt)
+                    if pt:
+                        self._pending.upgrade_entry(sym, int(pt))
+                except Exception:
+                    pass
+            self._release(scope, target, payload or {})
+        elif executed is False:
+            await self._transition_internal(record, "FAILED", reason=vreason or "BROKER_REJECTED", event_type="command.failed")
+            self._release(scope, target, payload or {})
+        else:
             await self._verification_unresolved_internal(record, scope, target)
 
     async def _execute(self, status: RuntimeCommandStatus, kind: str, payload: dict[str, Any], scope: str, origin: str = "TRANSPORT") -> None:
@@ -421,24 +563,33 @@ class CommandPipeline:
         await self._transition(status, "EXECUTION_UNKNOWN", reason=reason, event_type="command.execution_unknown")
         await self._bus.publish(self._envelope(status, "reconciliation.issue.detected", "EXECUTION_UNKNOWN", reason, {"targetScope": scope}), mutates_state=False)
         if target and target.isdigit(): self._pending.retain_for_reconciliation(int(target))
-        try:
-            result = await asyncio.wait_for(asyncio.shield(asyncio.wrap_future(self._verification_future(status.command_id, kind, target, payload or {}))), timeout=self._risk_config.verification_timeout_s)
-            executed, vreason = verdict(kind, result)
-            if executed is True:
-                await self._bus.publish(self._envelope(status, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed"}), mutates_state=False)
-                await self._transition(status, "COMPLETED", event_type="command.completed")
-                self._release(scope, target, {})
-            elif executed is False:
-                await self._transition(status, "FAILED", reason=vreason or "BROKER_REJECTED", event_type="command.failed")
-                self._release(scope, target, {})
-            # else: verdict=None → stay EXECUTION_UNKNOWN (ambiguous, not resolved)
-        except asyncio.TimeoutError:
+        executed, vreason, result, polls, call_times = await self._temporal_verify(
+            status.command_id, kind, target, payload or {},
+            timeout=self._risk_config.verification_timeout_s,
+            poll_interval_ms=self._risk_config.verify_poll_interval_ms,
+        )
+        if executed is True:
+            await self._bus.publish(self._envelope(status, "reconciliation.issue.resolved", "COMPLETED", None, {"targetScope": scope, "verdict": "executed", "polls": polls}), mutates_state=False)
+            await self._transition(status, "COMPLETED", event_type="command.completed")
+            self._release(scope, target, payload or {})
+        elif executed is False:
+            await self._transition(status, "FAILED", reason=vreason or "BROKER_REJECTED", event_type="command.failed")
+            self._release(scope, target, payload or {})
+        else:
             await self._verification_unresolved(status, scope, target)
 
     def _release(self, scope: str, target: str | None, payload: dict[str, Any]) -> None:
         self._locks.discard(scope)
         if target and target.isdigit(): self._pending.clear(int(target))
-        if "symbol" in payload: self._pending.clear_entry(str(payload["symbol"]))
+        if "symbol" in payload:
+            sym = str(payload["symbol"])
+            self._pending.clear_entry(sym)
+            if self._journal is not None:
+                try:
+                    self._journal.update_entry_intent(sym, state="RESOLVED")
+                    self._journal.clear_entry_intent(sym)
+                except Exception:
+                    pass
         self._facts.unlock_entity(scope)
 
     async def _verification_unresolved(self, status: RuntimeCommandStatus, scope: str, target: str | None) -> None:

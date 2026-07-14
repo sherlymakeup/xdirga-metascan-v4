@@ -22,6 +22,7 @@ class RiskConfig(BaseModel):
     max_daily_loss_pct: float = 0.02
     spread_max_multiple: float = 3.0
     spread_median_window: int = 20
+    verify_poll_interval_ms: int = 50
 
     @model_validator(mode="after")
     def _validate_ranges(self) -> RiskConfig:

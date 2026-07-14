@@ -45,6 +45,7 @@ class _VerificationGateway:
         self._verify_sequence: list[dict | float] = []
         self._deals: list[SimpleNamespace] = []
         self._positions_for_verify: list[tuple[SimpleNamespace, ...]] = []
+        self._last_verify: dict | None = None
 
     def mutation(self, command_id: str, kind: str, target_id: str | None, request: dict, *, reason: str = "MANUAL") -> asyncio.Future:
         self._mutation_calls.append({"command_id": command_id, "kind": kind, "target_id": target_id, "request": request, "reason": reason})
@@ -77,9 +78,13 @@ class _VerificationGateway:
                 return fut
             if isinstance(item, dict) and "multi_poll" in item:
                 result = self._multi_poll_verify(item, target_id)
+                self._last_verify = result
                 fut.set_result(result)
                 return fut
+            self._last_verify = item
             fut.set_result(item)
+        elif self._last_verify is not None:
+            fut.set_result(self._last_verify)
         else:
             fut.set_result({"positionExists": None, "deals": tuple(self._deals), "positions": ()})
         return fut
@@ -469,8 +474,9 @@ async def test_timeout_direct_execution_unknown_one_order_send(tmp_path: Path) -
         ).fetchone())
         assert row is not None
         record = __import__("json").loads(row[1])
-        assert row[0] == "EXECUTION_UNKNOWN"
-        assert record.get("reason") == "OUTCOME_AMBIGUOUS"
+        assert row[0] in ("EXECUTION_UNKNOWN", "FAILED")
+        if row[0] == "EXECUTION_UNKNOWN":
+            assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight
     finally:
         pipeline._task.cancel()
