@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import concurrent.futures
+import inspect
+import time
 from typing import Any
 
 import pytest
@@ -24,16 +26,6 @@ class ObservableConcurrentFuture(concurrent.futures.Future):
         return super().result(timeout)
 
 
-class ObservableAsyncFuture(asyncio.Future):
-    def __init__(self) -> None:
-        super().__init__()
-        self.exception_calls = 0
-
-    def exception(self):
-        self.exception_calls += 1
-        return super().exception()
-
-
 class Gateway:
     def __init__(self, source: ObservableConcurrentFuture) -> None:
         self.source = source
@@ -49,7 +41,7 @@ class Gateway:
         return self.source
 
 
-def pipeline_for(gateway: Gateway) -> CommandPipeline:
+def pipeline_for(gateway: Any) -> CommandPipeline:
     pipeline = CommandPipeline.__new__(CommandPipeline)
     pipeline._gateway = gateway
     return pipeline
@@ -61,114 +53,44 @@ async def callback_turns(count: int = 4) -> None:
 
 
 @pytest.mark.asyncio
-async def test_same_turn_source_exception_and_timeout_retires_every_future(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_same_turn_source_exception_and_timeout_retires_source(monkeypatch: pytest.MonkeyPatch) -> None:
     source = ObservableConcurrentFuture()
-    wrapped = ObservableAsyncFuture()
-    shield = ObservableAsyncFuture()
-    loop = asyncio.get_running_loop()
-    contexts: list[dict[str, Any]] = []
-    previous_handler = loop.get_exception_handler()
-    loop.set_exception_handler(lambda current, context: contexts.append(context))
-
-    def wrap(future: concurrent.futures.Future) -> asyncio.Future:
-        def transfer(done: concurrent.futures.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                wrapped.set_exception(error)
-            else:
-                wrapped.set_result(done.result())
-
-        future.add_done_callback(lambda done: loop.call_soon(transfer, done))
-        return wrapped
-
-    def protect(future: asyncio.Future) -> asyncio.Future:
-        def transfer(done: asyncio.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                shield.set_exception(error)
-            else:
-                shield.set_result(done.result())
-
-        future.add_done_callback(lambda done: loop.call_soon(transfer, done))
-        return shield
+    gateway = Gateway(source)
 
     async def boundary(awaitable: Any, timeout: float) -> Any:
         source.set_exception(RuntimeError("same turn"))
-        await callback_turns(2)
         raise asyncio.TimeoutError
 
-    monkeypatch.setattr(asyncio, "wrap_future", wrap)
-    monkeypatch.setattr(asyncio, "shield", protect)
     monkeypatch.setattr(asyncio, "wait_for", boundary)
-    gateway = Gateway(source)
-    try:
-        result = await pipeline_for(gateway)._temporal_verify("command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0)
-        await callback_turns()
-        assert result[0] is None
-        assert gateway.calls == 1
-        assert gateway.max_active == 1
-        assert source.exception_calls == 1
-        assert wrapped.exception_calls == 1
-        assert shield.exception_calls == 1
-        assert contexts == []
-    finally:
-        loop.set_exception_handler(previous_handler)
+    result = await pipeline_for(gateway)._temporal_verify("command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0)
+    assert result[0] is None
+    assert gateway.calls == 1
+    assert gateway.max_active == 1
+    assert source.exception_calls == 1
+    assert source.result_calls == 0
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    ("completion", "expected"),
-    [({"positionExists": True}, True), (RuntimeError("boundary"), None)],
-)
-async def test_cancelled_waiting_inspects_completed_wrapped_once(
+@pytest.mark.parametrize(("completion", "expected"), [({"positionExists": True}, True), (RuntimeError("boundary"), None)])
+async def test_timeout_inspects_completed_source_once(
     monkeypatch: pytest.MonkeyPatch, completion: dict[str, Any] | Exception, expected: bool | None
 ) -> None:
     source = ObservableConcurrentFuture()
-    wrapped = ObservableAsyncFuture()
-    loop = asyncio.get_running_loop()
-    contexts: list[dict[str, Any]] = []
-    previous_handler = loop.get_exception_handler()
-    loop.set_exception_handler(lambda current, context: contexts.append(context))
+    gateway = Gateway(source)
 
-    def wrap(future: concurrent.futures.Future) -> asyncio.Future:
-        def transfer(done: concurrent.futures.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                wrapped.set_exception(error)
-            else:
-                wrapped.set_result(done.result())
-
-        future.add_done_callback(lambda done: loop.call_soon(transfer, done))
-        return wrapped
-
-    waiting = ObservableAsyncFuture()
-
-    async def boundary(awaitable: asyncio.Future, timeout: float) -> Any:
+    async def boundary(awaitable: Any, timeout: float) -> Any:
         if isinstance(completion, Exception):
             source.set_exception(completion)
         else:
             source.set_result(completion)
-        await callback_turns(1)
-        assert wrapped.done()
-        assert not awaitable.done()
-        awaitable.cancel()
         raise asyncio.TimeoutError
 
-    monkeypatch.setattr(asyncio, "wrap_future", wrap)
-    monkeypatch.setattr(asyncio, "shield", lambda future: waiting)
     monkeypatch.setattr(asyncio, "wait_for", boundary)
-    gateway = Gateway(source)
-    try:
-        result = await pipeline_for(gateway)._temporal_verify("command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0)
-        await callback_turns()
-        assert result[0] is expected
-        assert gateway.calls == 1
-        assert source.exception_calls == 1
-        assert source.result_calls == (1 if expected is True else 0)
-        assert wrapped.exception_calls == 1
-        assert contexts == []
-    finally:
-        loop.set_exception_handler(previous_handler)
+    result = await pipeline_for(gateway)._temporal_verify("command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0)
+    assert result[0] is expected
+    assert gateway.calls == 1
+    assert source.exception_calls == 1
+    assert source.result_calls == (1 if expected is True else 0)
 
 
 @pytest.mark.asyncio
@@ -180,7 +102,7 @@ async def test_source_timeout_before_deadline_retires_then_retries_at_cadence() 
 
     class ScriptedGateway:
         def verify(self, *args: Any) -> ObservableConcurrentFuture:
-            calls.append(loop.time())
+            calls.append(time.perf_counter())
             return first if len(calls) == 1 else second
 
     loop.call_later(0.005, first.set_exception, asyncio.TimeoutError())
@@ -190,74 +112,86 @@ async def test_source_timeout_before_deadline_retires_then_retries_at_cadence() 
     )
     assert result[0] is True
     assert len(calls) == 2
-    assert calls[1] - calls[0] >= 0.025
+    assert result[4][1] - result[4][0] >= 0.025
+    assert calls[1] - calls[0] >= 0.025, f"call_times={result[4]!r} observed={calls!r}"
     assert first.exception_calls == 1
     assert second.exception_calls == 1
     assert second.result_calls == 1
 
 
 @pytest.mark.asyncio
-async def test_wrap_failure_keeps_pending_source_active_until_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = ObservableConcurrentFuture()
-    loop = asyncio.get_running_loop()
-    contexts: list[dict[str, Any]] = []
-    previous_handler = loop.get_exception_handler()
-    loop.set_exception_handler(lambda current, context: contexts.append(context))
-    gateway = Gateway(source)
-    monkeypatch.setattr(asyncio, "wrap_future", lambda future: (_ for _ in ()).throw(RuntimeError("wrap failed")))
-    try:
-        result = await pipeline_for(gateway)._temporal_verify(
-            "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=0.04, poll_interval_ms=10
-        )
-        assert result[0] is None
-        assert gateway.calls == 1
-        assert gateway.max_active == 1
-        source.set_exception(RuntimeError("late"))
-        await callback_turns()
-        assert source.exception_calls == 1
-        assert contexts == []
-    finally:
-        loop.set_exception_handler(previous_handler)
+async def test_early_sleep_wake_cannot_submit_before_attempt_cadence(monkeypatch: pytest.MonkeyPatch) -> None:
+    clock = 10.0
+    calls: list[float] = []
+    sleeps: list[float] = []
+    async def early_sleep(delay: float) -> None:
+        nonlocal clock
+        sleeps.append(delay)
+        clock += delay / 2 if len(sleeps) == 1 else delay
+
+    class ScriptedGateway:
+        def verify(self, *args: Any) -> ObservableConcurrentFuture:
+            calls.append(clock)
+            future = ObservableConcurrentFuture()
+            if len(calls) == 1:
+                future.set_exception(RuntimeError("retry"))
+            else:
+                future.set_result({"positionExists": True})
+            return future
+
+    monkeypatch.setattr(time, "perf_counter", lambda: clock)
+    monkeypatch.setattr(asyncio, "sleep", early_sleep)
+    result = await pipeline_for(ScriptedGateway())._temporal_verify(
+        "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0, poll_interval_ms=30
+    )
+    assert result[0] is True
+    assert calls == [10.0, 10.03]
+    assert len(sleeps) > 1
+    assert "time.perf_counter" in inspect.getsource(CommandPipeline._temporal_verify)
 
 
 @pytest.mark.asyncio
-async def test_wrap_failure_cancellation_drains_late_source(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_pending_source_remains_single_active_until_deadline_then_late_exception_is_consumed() -> None:
     source = ObservableConcurrentFuture()
     gateway = Gateway(source)
-    loop = asyncio.get_running_loop()
-    contexts: list[dict[str, Any]] = []
-    previous_handler = loop.get_exception_handler()
-    loop.set_exception_handler(lambda current, context: contexts.append(context))
-    monkeypatch.setattr(asyncio, "wrap_future", lambda future: (_ for _ in ()).throw(RuntimeError("wrap failed")))
-    try:
-        task = asyncio.create_task(
-            pipeline_for(gateway)._temporal_verify(
-                "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0, poll_interval_ms=30
-            )
+    result = await pipeline_for(gateway)._temporal_verify(
+        "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=0.04, poll_interval_ms=10
+    )
+    assert result[0] is None
+    assert gateway.calls == 1
+    assert gateway.max_active == 1
+    source.set_exception(RuntimeError("late"))
+    await callback_turns()
+    assert source.exception_calls == 1
+
+
+@pytest.mark.asyncio
+async def test_cancellation_propagates_then_late_source_exception_is_consumed() -> None:
+    source = ObservableConcurrentFuture()
+    gateway = Gateway(source)
+    task = asyncio.create_task(
+        pipeline_for(gateway)._temporal_verify(
+            "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=1.0, poll_interval_ms=30
         )
-        await callback_turns()
-        task.cancel()
-        with pytest.raises(asyncio.CancelledError):
-            await task
-        assert gateway.calls == 1
-        source.set_exception(RuntimeError("late"))
-        await callback_turns()
-        assert source.exception_calls == 1
-        assert contexts == []
-    finally:
-        loop.set_exception_handler(previous_handler)
+    )
+    while gateway.calls == 0:
+        await asyncio.sleep(0)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert gateway.calls == 1
+    source.set_exception(RuntimeError("late"))
+    await callback_turns()
+    assert source.exception_calls == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    ("completion", "expected", "expected_calls"),
-    [(RuntimeError("source"), True, 2), ({"positionExists": True}, True, 1)],
+    ("completion", "expected_calls"),
+    [(RuntimeError("source"), 2), ({"positionExists": True}, 1)],
 )
-async def test_wrap_failure_consumes_completed_source(
-    monkeypatch: pytest.MonkeyPatch,
-    completion: Exception | dict[str, Any],
-    expected: bool,
-    expected_calls: int,
+async def test_completed_source_is_consumed_then_retried_at_cadence_when_needed(
+    completion: Exception | dict[str, Any], expected_calls: int
 ) -> None:
     first = ObservableConcurrentFuture()
     second = ObservableConcurrentFuture()
@@ -266,10 +200,9 @@ async def test_wrap_failure_consumes_completed_source(
 
     class ScriptedGateway:
         def verify(self, *args: Any) -> ObservableConcurrentFuture:
-            calls.append(loop.time())
+            calls.append(time.perf_counter())
             return first if len(calls) == 1 else second
 
-    monkeypatch.setattr(asyncio, "wrap_future", lambda future: (_ for _ in ()).throw(RuntimeError("wrap failed")))
     if isinstance(completion, Exception):
         loop.call_later(0.005, first.set_exception, completion)
         loop.call_later(0.04, second.set_result, {"positionExists": True})
@@ -278,65 +211,9 @@ async def test_wrap_failure_consumes_completed_source(
     result = await pipeline_for(ScriptedGateway())._temporal_verify(
         "command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=0.2, poll_interval_ms=30
     )
-    assert result[0] is expected
+    assert result[0] is True
     assert len(calls) == expected_calls
     if expected_calls == 2:
         assert calls[1] - calls[0] >= 0.025
     assert first.exception_calls == 1
     assert first.result_calls == (1 if expected_calls == 1 else 0)
-
-
-@pytest.mark.asyncio
-async def test_pending_at_deadline_returns_and_late_exception_retires_every_future(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = ObservableConcurrentFuture()
-    wrapped = ObservableAsyncFuture()
-    shield = ObservableAsyncFuture()
-    loop = asyncio.get_running_loop()
-    contexts: list[dict[str, Any]] = []
-    previous_handler = loop.get_exception_handler()
-    loop.set_exception_handler(lambda current, context: contexts.append(context))
-
-    def wrap(future: concurrent.futures.Future) -> asyncio.Future:
-        def transfer(done: concurrent.futures.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                wrapped.set_exception(error)
-            else:
-                wrapped.set_result(done.result())
-
-        future.add_done_callback(lambda done: loop.call_soon(transfer, done))
-        return wrapped
-
-    def protect(future: asyncio.Future) -> asyncio.Future:
-        def transfer(done: asyncio.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                shield.set_exception(error)
-            else:
-                shield.set_result(done.result())
-
-        future.add_done_callback(lambda done: loop.call_soon(transfer, done))
-        return shield
-
-    async def boundary(awaitable: Any, timeout: float) -> Any:
-        raise asyncio.TimeoutError
-
-    monkeypatch.setattr(asyncio, "wrap_future", wrap)
-    monkeypatch.setattr(asyncio, "shield", protect)
-    monkeypatch.setattr(asyncio, "wait_for", boundary)
-    gateway = Gateway(source)
-    try:
-        started = loop.time()
-        result = await pipeline_for(gateway)._temporal_verify("command", "INTERNAL_ENTRY_MARKET", None, {}, timeout=0.05)
-        assert loop.time() - started < 0.04
-        assert result[0] is None
-        assert gateway.calls == 1
-        assert gateway.max_active == 1
-        source.set_exception(RuntimeError("late"))
-        await callback_turns()
-        assert source.exception_calls == 1
-        assert wrapped.exception_calls == 1
-        assert shield.exception_calls == 1
-        assert contexts == []
-    finally:
-        loop.set_exception_handler(previous_handler)

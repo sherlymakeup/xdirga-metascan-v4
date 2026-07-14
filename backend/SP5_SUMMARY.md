@@ -1,6 +1,6 @@
 # SP5 — Locked Ruling Coverage
 
-Status: Round 8 final verifier lifecycle cleanup implemented; verification evidence below.
+Status: Round 9 final deadline result-handoff correction implemented; verification evidence below.
 
 ## Coverage: R1–R27
 
@@ -118,7 +118,7 @@ Stability suite results: run 1 `26 passed`; run 2 `26 passed`; run 3 `26 passed`
 
 Round 6 residual root cause: completed verification futures that raised were consumed as `None` but remained active. The loop repeatedly awaited the same failed future, prevented retries, and could spin until deadline.
 
-Final behavior: the verifier explicitly separates idle, pending, successful completion, and exceptional completion. Async and synchronous transient failures are consumed, logged, cleared, then retried at monotonic cadence while budget remains. One source future remains active at most; slow calls use remaining overall budget; boundary-completed results are inspected before timeout fallback; cancellation propagates and installs safe source/wrapper exception drains without retry.
+Final behavior: the verifier explicitly separates idle, pending, successful completion, and exceptional completion. Async and synchronous transient failures are consumed, logged, cleared, then retried at monotonic cadence while budget remains. One source future remains active at most; slow calls use remaining overall budget; boundary-completed results are inspected before timeout fallback; cancellation propagates while source completion remains safely owned without retry.
 
 | Production behavior | Exact tests |
 |---|---|
@@ -127,7 +127,7 @@ Final behavior: the verifier explicitly separates idle, pending, successful comp
 | Exceptions through full budget without call storm | `test_sp5_r7_temporal_verifier_exceptions.py::test_c_async_exceptions_until_deadline_use_full_budget_without_call_storm` |
 | Synchronous submission failure and implementation `TypeError` retry | `test_sp5_r7_temporal_verifier_exceptions.py::test_d_synchronous_verify_submission_failure_retries_at_cadence`; `test_d_type_error_from_modern_verify_is_one_submission_then_cadence_retry` |
 | Boundary-completed result precedence | `test_sp5_r7_temporal_verifier_exceptions.py::test_e_same_turn_completed_result_is_inspected_before_timeout` |
-| Pending-timeout exception lifecycle | `test_sp5_r7_temporal_verifier_exceptions.py::test_e_pending_timeout_drains_late_source_and_wrapper_exception` |
+| Pending-timeout exception lifecycle | `test_sp5_r7_temporal_verifier_exceptions.py::test_e_pending_timeout_drains_late_source_exception` |
 | Cancellation propagation and exception drain | `test_sp5_r7_temporal_verifier_exceptions.py::test_f_cancellation_propagates_without_retry_and_production_drains_exception` |
 | Durable ambiguity lock and alert | `test_sp5_r7_temporal_verifier_exceptions.py::test_g_exception_ambiguity_retains_lock_and_emits_alert_on_hot_path` |
 
@@ -137,17 +137,34 @@ Round 7 stability: runs 1–10 each `11 passed`. Combined temporal/recovery stab
 
 Round 7 boundary root cause: when source completion and `wait_for` timeout shared a scheduler boundary, the source exception could be consumed while the wrapped or shield future retained the same exception. Pending sources completing after logical timeout had the same ownership gap.
 
-Cleanup design: each attempt has explicit ownership. `wrap_future` consumes the source completion, `shield` consumes the wrapped completion, and verifier retirement consumes or schedules a drain for the terminal waiting future. Cancelled shield boundaries inspect the completed wrapper; pending wrapperless sources remain single-flight and are drained on timeout or cancellation. Cleanup never awaits beyond the monotonic budget and never submits after deadline.
+Round 8 established explicit source-attempt retirement: completed source exceptions are consumed, pending sources remain single-flight through deadline, and late completion after timeout or cancellation is observed without blocking beyond budget.
 
 | Production behavior | Exact tests |
 |---|---|
-| Same-turn boundary exception drains source, wrapper, shield | `test_sp5_r8_temporal_verifier_retirement.py::test_same_turn_source_exception_and_timeout_retires_every_future` |
-| Pending deadline then late exception | `test_sp5_r8_temporal_verifier_retirement.py::test_pending_at_deadline_returns_and_late_exception_retires_every_future` |
-| Cancelled shield boundary success/error | Round 8 cancelled-waiting boundary tests |
-| Source `TimeoutError` before deadline retries | Round 8 source-timeout retry test |
-| Wrapper construction failure: pending, success, error, cancellation | Round 8 wrapper-failure lifecycle tests |
+| Same-turn boundary exception consumes source | `test_sp5_r8_temporal_verifier_retirement.py::test_same_turn_source_exception_and_timeout_retires_source` |
+| Completed source result/error inspected once | `test_sp5_r8_temporal_verifier_retirement.py::test_timeout_inspects_completed_source_once` |
+| Source `TimeoutError` retries before deadline | `test_sp5_r8_temporal_verifier_retirement.py::test_source_timeout_before_deadline_retires_then_retries_at_cadence` |
+| Pending deadline and late exception | `test_sp5_r8_temporal_verifier_retirement.py::test_pending_source_remains_single_active_until_deadline_then_late_exception_is_consumed` |
+| Cancellation and late source exception | `test_sp5_r8_temporal_verifier_retirement.py::test_cancellation_propagates_then_late_source_exception_is_consumed` |
 
 Round 8 stability: runs 1–10 each `9 passed`. Round 7 stability: runs 1–10 each `11 passed`. Combined temporal/recovery stability: runs 1–10 each `46 passed`. SP6 was not started.
+
+## Round 9 deadline result handoff
+
+Round 8 removed unhandled wrapper exceptions but still lost a source result when the source became terminal at deadline before its asyncio wrapper callback ran. Cleanup drained the later wrapper, yet the completed success was never evaluated.
+
+Round 9 makes the source callback the sole outcome owner. It consumes source result/exception exactly once, records a lock-protected handoff before notifying the event loop, and signals a normal-value ready future. Deadline timeout reads that handoff directly, independent of notification callback ordering. Cancellation propagates immediately while the source callback retains cleanup ownership. Pending sources remain logically ambiguous and are consumed safely when they eventually finish. Cadence/deadlines use high-resolution `perf_counter()` and recheck the cadence target after every scheduler wake.
+
+| Production behavior | Exact tests |
+|---|---|
+| Source success terminal, notification pending at deadline | `test_sp5_r9_temporal_verifier_handoff.py::test_a_timeout_reads_success_handoff_before_ready_notification` |
+| Source exception terminal, notification pending at deadline | `test_sp5_r9_temporal_verifier_handoff.py::test_b_timeout_reads_exception_handoff_before_ready_notification` |
+| Cancellation during populated handoff | `test_sp5_r9_temporal_verifier_handoff.py::test_c_cancellation_propagates_with_populated_handoff_and_ready_pending` |
+| Cancelled source ownership | `test_sp5_r9_temporal_verifier_handoff.py::test_d_cancelled_source_is_consumed_as_ordinary_exception` |
+| Closed-loop late completion | `test_sp5_r9_temporal_verifier_handoff.py::test_e_late_source_exception_is_consumed_when_loop_notification_is_unavailable` |
+| Early scheduler wake cadence | `test_sp5_r8_temporal_verifier_retirement.py::test_early_sleep_wake_cannot_submit_before_attempt_cadence` |
+
+TDD evidence: the new boundary success and exception tests failed on `fa6620cfc742cc903ce58c54b338e2e619966b40` because success returned ambiguity and source exception ownership remained incomplete. Round 9 stability: runs 1–10 each `5 passed`; Round 8 runs 1–10 each `9 passed`; Round 7 runs 1–10 each `11 passed`; combined Round 5–9 runs 1–10 each `51 passed`. SP6 was not started.
 
 ## RCA and mechanical prevention
 
@@ -171,7 +188,11 @@ SP7 owns deal-history reconciliation, durable resolution of locks retained after
 
 ## Verification
 
-- Full suite: `403 passed, 1 existing Starlette/httpx deprecation warning`.
+- Full suite: `408 passed, 1 existing Starlette/httpx deprecation warning`.
+- Round 9 tests: `5 passed`; 10 consecutive runs each `5 passed`.
+- Round 8 repeat: 10 consecutive runs each `9 passed`.
+- Round 7 repeat: 10 consecutive runs each `11 passed`.
+- Combined Round 5–9 temporal/recovery stability: 10 consecutive runs each `51 passed`.
 - Round 8 tests: `9 passed`; 10 consecutive runs each `9 passed`.
 - Round 7 repeat: 10 consecutive runs each `11 passed`.
 - Combined Round 5–8 temporal/recovery stability: 10 consecutive runs each `46 passed`.

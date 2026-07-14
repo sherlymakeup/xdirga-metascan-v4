@@ -20,7 +20,7 @@ class ScriptedGateway:
 
     def verify(self, *args: Any) -> concurrent.futures.Future:
         loop = asyncio.get_running_loop()
-        self.calls.append(loop.time())
+        self.calls.append(time.perf_counter())
         item = self.script.pop(0)
         if isinstance(item, Exception):
             raise item
@@ -183,45 +183,22 @@ class ObservableFuture(concurrent.futures.Future):
 
 
 @pytest.mark.asyncio
-async def test_e_pending_timeout_drains_late_source_and_wrapper_exception(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_e_pending_timeout_drains_late_source_exception(monkeypatch: pytest.MonkeyPatch) -> None:
     source = ObservableFuture()
-
-    class ObservableAsyncFuture(asyncio.Future):
-        exception_calls = 0
-
-        def exception(self):
-            self.exception_calls += 1
-            return super().exception()
-
-    wrapped = ObservableAsyncFuture()
 
     class Gateway:
         def verify(self, command_id: str, kind: str, target: str | None, payload: dict[str, Any]) -> concurrent.futures.Future:
             return source
 
-    def wrap(future: concurrent.futures.Future) -> asyncio.Future:
-        def transfer(done: concurrent.futures.Future) -> None:
-            error = done.exception()
-            if error is not None:
-                wrapped.set_exception(error)
-            else:
-                wrapped.set_result(done.result())
-
-        future.add_done_callback(lambda done: asyncio.get_running_loop().call_soon(transfer, done))
-        return wrapped
-
     async def timeout(awaitable: Any, timeout: float) -> Any:
         raise asyncio.TimeoutError
 
-    monkeypatch.setattr(asyncio, "wrap_future", wrap)
     monkeypatch.setattr(asyncio, "wait_for", timeout)
     result = await run(Gateway(), timeout=1.0)
     assert result[0] is None
     source.set_exception(RuntimeError("late timeout"))
     await asyncio.sleep(0)
-    await asyncio.sleep(0)
     assert source.exception_calls == 1
-    assert wrapped.exception_calls == 1
 
 
 @pytest.mark.asyncio
