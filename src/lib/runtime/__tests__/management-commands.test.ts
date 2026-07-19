@@ -80,6 +80,36 @@ describe("management commands — safe-mode / handshake gating", () => {
     expect(compat.safeMode).toBe(false);
   });
 
+  it("accepts the pinned backend canonical schema hash", () => {
+    expect(EXPECTED_RUNTIME_CONTRACT.schemaHash).toBe(
+      "e22ea280acfbdc8da741d534b7991eb9a8ac9459c5d82271e778e7db02aae895",
+    );
+  });
+
+  it("rejects a runtime-authored hash despite the same schema version", () => {
+    const compat = evaluateHandshake({
+      runtimeName: EXPECTED_RUNTIME_CONTRACT.runtimeName,
+      runtimeVersion: EXPECTED_RUNTIME_CONTRACT.protocolVersion,
+      runtimeId: "rt",
+      bootId: "boot-1",
+      protocolId: EXPECTED_RUNTIME_CONTRACT.protocolId,
+      protocolVersion: EXPECTED_RUNTIME_CONTRACT.protocolVersion,
+      schemaVersion: EXPECTED_RUNTIME_CONTRACT.schemaVersion,
+      schemaHash: "runtime-self-authored-hash",
+      capabilitiesRevision: 1,
+      supportedFeatures: [...EXPECTED_RUNTIME_CONTRACT.requiredFeatures],
+      supportedCommands: [...EXPECTED_RUNTIME_CONTRACT.requiredCommands],
+      source: "LOCAL_RUNTIME",
+      observedAt: new Date().toISOString(),
+    });
+    expect(compat.severity).toBe("INCOMPATIBLE");
+    expect(compat.safeMode).toBe(true);
+    expect(compat.expected.schemaHash).toBe(EXPECTED_RUNTIME_CONTRACT.schemaHash);
+    expect(compat.reasons).toContainEqual(
+      expect.objectContaining({ code: "SCHEMA_HASH_DRIFT", severity: "INCOMPATIBLE" }),
+    );
+  });
+
   it("a null/incompatible handshake engages safe mode (all commands blocked)", () => {
     const compat = evaluateHandshake(null);
     expect(compat.safeMode).toBe(true);

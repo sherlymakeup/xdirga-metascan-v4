@@ -124,8 +124,8 @@ export function evaluateHandshake(actual: RuntimeHandshake | null): HandshakeCom
   if (actual.schemaHash && actual.schemaHash !== expected.schemaHash) {
     reasons.push({
       code: "SCHEMA_HASH_DRIFT",
-      severity: actSchMaj !== expSchMaj ? "INCOMPATIBLE" : "WARN",
-      message: "Snapshot schema hash differs from the frontend baseline. Field-level drift possible.",
+      severity: "INCOMPATIBLE",
+      message: "Snapshot schema hash differs from the frontend-pinned canonical contract hash.",
     });
   }
 

@@ -44,7 +44,8 @@ def _build_command_capability(kind: str) -> dict:
     safety = kind in _SAFETY_CRITICAL
     return {
         "command": kind,
-        "allowed": True,
+        "allowed": False,
+        "reason": "READ_ONLY_RUNTIME",
         "riskLevel": risk,
         "requiresReason": safety,
         "requiresTypedConfirmation": risk >= 3,

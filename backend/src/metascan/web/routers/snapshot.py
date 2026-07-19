@@ -8,10 +8,11 @@ from __future__ import annotations
 
 import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from metascan.bus.event_bus import EventBus
 from metascan.contract.hash import GOLDEN_SCHEMA_HASH
+from metascan.mt5.types import DashboardReadState
 from metascan.web.dependencies import get_bus
 from metascan.web.security import verify_token
 
@@ -115,12 +116,116 @@ def _empty_snapshot() -> dict:
     }
 
 
+def _msc_iso(value: int) -> str | None:
+    if value <= 0:
+        return None
+    return datetime.datetime.fromtimestamp(value / 1000, datetime.timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _ownership(*, magic: int, bot_magic: int | None) -> str:
+    if bot_magic is None:
+        return "UNKNOWN"
+    return "BOT_MANAGED" if magic == bot_magic else "FOREIGN"
+
+
+def _read_snapshot(state: DashboardReadState) -> dict:
+    snapshot = _empty_snapshot()
+    observed_at = state.last_frame_at or _now_iso()
+    connected = state.connection_state == "CONNECTED"
+    snapshot["runtime"].update({
+        "state": "READY" if connected else "DEGRADED",
+        "stateReason": f"MT5_{state.connection_state}",
+        "lastHeartbeatAt": observed_at,
+        "heartbeatLatencyMs": state.poll_latency_ms or 0.0,
+    })
+    snapshot["broker"].update({
+        "connection": state.connection_state,
+        "tradingPermitted": False,
+        "lastTickAt": observed_at,
+        "lastRequestAt": observed_at,
+        "avgLatencyMs": state.poll_latency_ms or 0.0,
+    })
+    snapshot["positions"] = [
+        {
+            "id": f"pos-{position.ticket}",
+            "brokerTicket": str(position.ticket),
+            "ownership": _ownership(magic=position.magic, bot_magic=state.bot_magic),
+            "symbol": position.symbol,
+            "side": "BUY" if position.type == 0 else "SELL",
+            "volume": position.volume,
+            "entryPrice": position.price_open,
+            "currentPrice": position.price_current,
+            "stopLoss": position.sl or None,
+            "takeProfit": position.tp or None,
+            "floatingPnl": position.profit,
+            "realizedPnl": None,
+            "riskAmount": None,
+            "riskPct": None,
+            "openedAt": _msc_iso(position.time_msc),
+            "strategy": None,
+            "protection": "SL_TP" if position.sl and position.tp else ("SL_ONLY" if position.sl else ("TP_ONLY" if position.tp else "NONE")),
+            "state": "OPEN",
+            "rMultiple": None,
+            "mfe": None,
+            "mae": None,
+            "commission": position.commission,
+            "swap": position.swap,
+            "netPnl": position.profit + position.swap + position.commission,
+            "management": None,
+        }
+        for position in state.positions
+    ]
+    snapshot["markets"] = [
+        {
+            "symbol": tick.symbol,
+            "group": None,
+            "bid": tick.bid,
+            "ask": tick.ask,
+            "spread": tick.ask - tick.bid,
+            "last": tick.last,
+            "changePct": None,
+            "sessionOpen": None,
+            "tradingPermitted": False,
+            "tickAgeMs": max(0.0, (datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00")).timestamp() * 1000) - tick.time_msc),
+            "freshness": "FRESH" if connected and max(0.0, (datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00")).timestamp() * 1000) - tick.time_msc) <= state.tick_age_budget_ms else "STALE",
+            "contractSize": state.symbol_meta[tick.symbol].trade_contract_size,
+            "tickSize": state.symbol_meta[tick.symbol].tick_size,
+            "minVolume": state.symbol_meta[tick.symbol].volume_min,
+            "maxVolume": state.symbol_meta[tick.symbol].volume_max,
+            "volumeStep": state.symbol_meta[tick.symbol].volume_step,
+            "swapLong": None,
+            "swapShort": None,
+            "marginRequirement": None,
+        }
+        for tick in state.ticks.values()
+        if tick.symbol in state.symbol_meta
+    ]
+    if state.account is not None:
+        floating_pnl = sum(position.profit + position.swap + position.commission for position in state.positions)
+        snapshot["account"].update({
+            "currency": state.account.currency,
+            "balance": state.account.balance,
+            "equity": state.account.equity,
+            "margin": state.account.margin,
+            "freeMargin": state.account.free_margin,
+            "marginLevel": state.account.margin_level,
+            "floatingPnl": floating_pnl,
+            "openPositions": len(state.positions),
+            "updatedAt": observed_at,
+            "freshness": "FRESH" if connected else "STALE",
+        })
+    return snapshot
+
+
 @router.get("/snapshot")
 async def get_snapshot(
+    request: Request,
     bus: EventBus = Depends(get_bus),
     _token: str = Depends(verify_token),
 ) -> dict:
     now = _now_iso()
+    consumer = getattr(request.app.state, "consumer", None)
+    read_state = consumer.dashboard_state() if consumer is not None else None
     return {
         "metadata": {
             "runtimeId": _RUNTIME_ID,
@@ -135,5 +240,5 @@ async def get_snapshot(
             "schemaHash": GOLDEN_SCHEMA_HASH,
             "source": "LOCAL_RUNTIME",
         },
-        "snapshot": _empty_snapshot(),
+        "snapshot": _read_snapshot(read_state) if read_state is not None else _empty_snapshot(),
     }

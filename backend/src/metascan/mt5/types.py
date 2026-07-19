@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Mapping
+from typing import Literal, Mapping
 
 
 @dataclass(frozen=True, slots=True)
@@ -71,6 +71,27 @@ class SymbolMeta:
     filling_mode: int
     trade_mode: int
     visible: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DashboardReadState:
+    connection_state: Literal["CONNECTED", "DISCONNECTED", "DEGRADED"]
+    account: AccountRow | None
+    positions: tuple[PositionRow, ...]
+    ticks: Mapping[str, TickRow]
+    symbol_meta: Mapping[str, SymbolMeta]
+    bot_magic: int | None
+    tick_age_budget_ms: float
+    last_frame_id: int
+    last_frame_at: str | None
+    poll_latency_ms: float | None
+
+    def __post_init__(self) -> None:
+        if self.connection_state not in {"CONNECTED", "DISCONNECTED", "DEGRADED"}:
+            raise ValueError("invalid dashboard connection state")
+        object.__setattr__(self, "positions", tuple(self.positions))
+        object.__setattr__(self, "ticks", MappingProxyType(dict(self.ticks)))
+        object.__setattr__(self, "symbol_meta", MappingProxyType(dict(self.symbol_meta)))
 
 
 @dataclass(frozen=True, slots=True)

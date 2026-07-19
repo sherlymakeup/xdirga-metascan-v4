@@ -11,10 +11,8 @@
 //   - ExecutionSemantics is always "LIVE": commands are treated with LIVE-grade
 //     safety even when the current data source is a fixture.
 //
-// The `schemaHash` value below is an explicit development identifier. The
-// FINAL schemaHash will be produced by the Python backend (Pydantic ->
-// JSON Schema -> canonical hash) and validated by the frontend during the
-// handshake. See HANDOFF.md.
+// The frontend is pinned at build time to the backend's existing canonical
+// contract hash and independently validates it during the handshake.
 
 import type { RuntimeCommandKind } from "./runtime-types";
 
@@ -23,7 +21,7 @@ export const RUNTIME_CONTRACT = {
   // Phase 5F.5 — bumped to 4.1 for management + journal contract additions.
   protocolVersion: "4.1.0",
   schemaVersion: "1.1.0",
-  schemaHash: "dev-schema-v4.1-baseline",
+  schemaHash: "e22ea280acfbdc8da741d534b7991eb9a8ac9459c5d82271e778e7db02aae895",
   minRuntimeVersion: "4.1.0",
   minFrontendVersion: "1.0.0",
   frontendVersion: "1.1.0",

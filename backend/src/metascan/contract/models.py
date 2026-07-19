@@ -233,6 +233,7 @@ class PositionManagement(WireModel):
 class Position(WireModel):
     id: str
     broker_ticket: str
+    ownership: Literal["BOT_MANAGED", "FOREIGN", "UNKNOWN"]
     symbol: str
     side: OrderSide
     volume: float
@@ -241,16 +242,16 @@ class Position(WireModel):
     stop_loss: float | None
     take_profit: float | None
     floating_pnl: float
-    realized_pnl: float
-    risk_amount: float
-    risk_pct: float
-    opened_at: str
-    strategy: str
+    realized_pnl: float | None
+    risk_amount: float | None
+    risk_pct: float | None
+    opened_at: str | None
+    strategy: str | None
     protection: PositionProtection
     state: PositionState
-    r_multiple: float
-    mfe: float
-    mae: float
+    r_multiple: float | None
+    mfe: float | None
+    mae: float | None
     commission: float
     swap: float
     net_pnl: float
@@ -413,13 +414,13 @@ class Strategy(WireModel):
 
 class MarketSymbol(WireModel):
     symbol: str
-    group: Literal["FX", "METALS", "INDICES", "CRYPTO"]
+    group: Literal["FX", "METALS", "INDICES", "CRYPTO"] | None
     bid: float
     ask: float
     spread: float
     last: float
-    change_pct: float
-    session_open: bool
+    change_pct: float | None
+    session_open: bool | None
     trading_permitted: bool
     tick_age_ms: float
     freshness: DataFreshness
@@ -428,9 +429,9 @@ class MarketSymbol(WireModel):
     min_volume: float
     max_volume: float
     volume_step: float
-    swap_long: float
-    swap_short: float
-    margin_requirement: float
+    swap_long: float | None
+    swap_short: float | None
+    margin_requirement: float | None
 
 
 class RiskLimit(WireModel):

@@ -88,6 +88,8 @@ async def test_capabilities_endpoint(async_client):
     assert isinstance(d["revision"], int)
     assert d["source"] == "LOCAL_RUNTIME"
     assert isinstance(d["commands"], dict)
+    assert all(capability["allowed"] is False for capability in d["commands"].values())
+    assert all(capability["reason"] == "READ_ONLY_RUNTIME" for capability in d["commands"].values())
     # Safety-critical commands at riskLevel >= 3 per capabilities.py
     for kind in ("runtime.emergencyKill", "runtime.pause", "position.closeAll"):
         assert kind in d["commands"]

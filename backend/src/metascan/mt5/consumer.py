@@ -11,7 +11,7 @@ from metascan.mt5.clocks import MonotonicClock, WallClock, SystemMonotonicClock,
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
 from metascan.mt5.pending_intent import PendingIntentLookup, NullPendingIntentLookup
-from metascan.mt5.types import AccountRow, BrokerStateFrame, PositionRow, TickRow
+from metascan.mt5.types import AccountRow, BrokerStateFrame, DashboardReadState, PositionRow, TickRow
 from metascan.mt5.mapping import position_id_for, position_payload, closed_trade_payload, protection_for, sl_or_none, tp_or_none
 
 logger = logging.getLogger("metascan.mt5.consumer")
@@ -77,7 +77,10 @@ class BrokerStateConsumer:
         self.last_positions: dict[int, PositionRow] = {}
         self.last_account: AccountRow | None = None
         self.last_ticks: dict[str, TickRow] = {}
+        self.last_symbol_meta: dict[str, Any] = {}
+        self.dashboard_positions: tuple[PositionRow, ...] = ()
         self.last_frame_id: int = 0
+        self.last_frame_at: str | None = None
         self.connection_state: str = "DISCONNECTED"
         self.quarantine_tickets: set[int] = set()
         self._hard_fail_streak: int = 0
@@ -85,6 +88,20 @@ class BrokerStateConsumer:
         self._last_tick_msc: dict[str, int] = {}
         self._degrade_reasons: set[str] = set()
         self._last_frame_mono: float = self._mono.monotonic()
+
+    def dashboard_state(self) -> DashboardReadState:
+        return DashboardReadState(
+            connection_state=self.connection_state,
+            account=self.last_account,
+            positions=self.dashboard_positions,
+            ticks=self.last_ticks,
+            symbol_meta=self.last_symbol_meta,
+            bot_magic=self._bot_magic,
+            tick_age_budget_ms=self._tick_age_budget_ms,
+            last_frame_id=self.last_frame_id,
+            last_frame_at=self.last_frame_at,
+            poll_latency_ms=self._metrics.cycle_p50(),
+        )
 
     def start(self) -> asyncio.Task[None]:
         self._stop.clear()
@@ -264,6 +281,7 @@ class BrokerStateConsumer:
                 self.last_frame_id = frame.frame_id
                 return published
 
+            self.dashboard_positions = frame.positions
             managed = {p.ticket: p for p in frame.positions if p.magic == self._bot_magic}
 
             # Closes
@@ -406,7 +424,9 @@ class BrokerStateConsumer:
 
             self.last_account = frame.account
             self.last_ticks = dict(frame.ticks)
+            self.last_symbol_meta = dict(frame.symbol_meta)
             self.last_frame_id = frame.frame_id
+            self.last_frame_at = frame.polled_at_wall
         except Exception:
             logger.exception("diff failed frame_id=%s", frame.frame_id)
         return published

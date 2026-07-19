@@ -15,7 +15,7 @@ PROTOCOL_VERSION = "4.1.0"
 SCHEMA_VERSION = "1.1.0"
 
 # Pinned literal — recompute with `python -m metascan.contract hash` after schema changes.
-GOLDEN_SCHEMA_HASH = "3a83d765239c89112ccecd1902337d6d78c1396a721775b14c3bb594ce6071d7"
+GOLDEN_SCHEMA_HASH = "e22ea280acfbdc8da741d534b7991eb9a8ac9459c5d82271e778e7db02aae895"
 
 # Non-semantic JSON Schema noise stripped for cross-version stability.
 _STRIP_KEYS = frozenset({"title", "description"})

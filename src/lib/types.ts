@@ -234,6 +234,7 @@ export interface PositionManagement {
 export interface Position {
   id: string;
   brokerTicket: string;
+  ownership: "BOT_MANAGED" | "FOREIGN" | "UNKNOWN";
   symbol: string;
   side: OrderSide;
   volume: number;
@@ -242,16 +243,16 @@ export interface Position {
   stopLoss: number | null;
   takeProfit: number | null;
   floatingPnl: number;
-  realizedPnl: number;
-  riskAmount: number;
-  riskPct: number;
-  openedAt: string;
-  strategy: string;
+  realizedPnl: number | null;
+  riskAmount: number | null;
+  riskPct: number | null;
+  openedAt: string | null;
+  strategy: string | null;
   protection: PositionProtection;
   state: PositionState;
-  rMultiple: number;
-  mfe: number;
-  mae: number;
+  rMultiple: number | null;
+  mfe: number | null;
+  mae: number | null;
 
   // -------- Sign convention --------
   // commission and swap are SIGNED values exactly as reported by MT5.
@@ -304,13 +305,13 @@ export interface Strategy {
 
 export interface MarketSymbol {
   symbol: string;
-  group: "FX" | "METALS" | "INDICES" | "CRYPTO";
+  group: "FX" | "METALS" | "INDICES" | "CRYPTO" | null;
   bid: number;
   ask: number;
   spread: number;
   last: number;
-  changePct: number;
-  sessionOpen: boolean;
+  changePct: number | null;
+  sessionOpen: boolean | null;
   tradingPermitted: boolean;
   tickAgeMs: number;
   freshness: DataFreshness;
@@ -319,9 +320,9 @@ export interface MarketSymbol {
   minVolume: number;
   maxVolume: number;
   volumeStep: number;
-  swapLong: number;
-  swapShort: number;
-  marginRequirement: number;
+  swapLong: number | null;
+  swapShort: number | null;
+  marginRequirement: number | null;
 }
 
 export interface RiskLimit {

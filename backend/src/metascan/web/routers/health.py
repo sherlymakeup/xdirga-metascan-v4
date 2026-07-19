@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import time
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 
 from metascan.bus.event_bus import EventBus
 from metascan.journal.db import Journal
@@ -19,12 +19,19 @@ _START_TIME = time.monotonic()
 
 @router.get("/health")
 async def get_health(
+    request: Request,
     journal: Journal = Depends(get_journal),
 ) -> dict:
     db_ok = journal.is_open
+    # status = API process / journal; mt5_connected = broker readiness (separate field)
+    mt5_connected = False
+    consumer = getattr(request.app.state, "consumer", None)
+    if consumer is not None:
+        mt5_connected = getattr(consumer, "connection_state", "") == "CONNECTED"
+    broker_ok = consumer is None or mt5_connected
     return {
-        "status": "OK" if db_ok else "DEGRADED",
-        "mt5_connected": False,
+        "status": "OK" if db_ok and broker_ok else "DEGRADED",
+        "mt5_connected": mt5_connected,
         "db_ok": db_ok,
         "uptime": time.monotonic() - _START_TIME,
     }
@@ -32,14 +39,17 @@ async def get_health(
 
 @router.get("/ops/metrics")
 async def get_metrics(
+    request: Request,
     bus: EventBus = Depends(get_bus),
-    pipeline = Depends(get_pipeline),
+    pipeline=Depends(get_pipeline),
 ) -> dict:
+    metrics = getattr(request.app.state, "metrics", None)
+    poll_latency = metrics.cycle_p50() if metrics is not None else None
     return {
         "eventBusQueueSize": sum(
             s._queue_ref().qsize() for s in bus._subs.values()
         ),
-        "mt5PollLatencyMs": 0.0,
+        "mt5PollLatencyMs": poll_latency if poll_latency is not None else 0.0,
         "sqliteCommitLatencyMs": 0.0,
         "mutationInFlight": pipeline.mutation_in_flight,
         "activeSseConnections": active_sse_connections.count,
