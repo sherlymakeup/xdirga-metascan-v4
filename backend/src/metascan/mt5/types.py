@@ -88,6 +88,9 @@ class DashboardReadState:
     positions_available: bool = True
     positions_frame_id: int = 0
     positions_observed_at: str | None = None
+    account_available: bool = False
+    account_frame_id: int | None = None
+    account_observed_at: str | None = None
 
     def __post_init__(self) -> None:
         if self.connection_state not in {"CONNECTED", "DISCONNECTED", "DEGRADED"}:
@@ -98,6 +101,9 @@ class DashboardReadState:
         if self.positions_available:
             object.__setattr__(self, "positions_frame_id", self.last_frame_id)
             object.__setattr__(self, "positions_observed_at", self.last_frame_at)
+        if self.account_available:
+            object.__setattr__(self, "account_frame_id", self.last_frame_id)
+            object.__setattr__(self, "account_observed_at", self.last_frame_at)
 
     def with_frame(
         self,
@@ -125,6 +131,9 @@ class DashboardReadState:
             positions_available=positions is not None,
             positions_frame_id=self.positions_frame_id,
             positions_observed_at=self.positions_observed_at,
+            account_available=account is not None,
+            account_frame_id=self.account_frame_id,
+            account_observed_at=self.account_observed_at,
         )
 
 

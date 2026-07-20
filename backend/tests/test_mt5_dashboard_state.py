@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import FrozenInstanceError
+from pathlib import Path
 from types import MappingProxyType
 
 import pytest
 
+from metascan.bus.event_bus import EventBus
+from metascan.journal.db import Journal
 from metascan.mt5.consumer import BrokerStateConsumer
+from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
-from metascan.mt5.types import AccountRow, DashboardReadState, PositionRow, SymbolMeta, TickRow
+from metascan.mt5.types import AccountRow, BrokerStateFrame, DashboardReadState, PositionRow, SymbolMeta, TickRow
 
 
 def test_dashboard_read_state_is_frozen_and_copies_collections() -> None:
@@ -69,11 +74,11 @@ def test_consumer_dashboard_state_copies_retained_read_model() -> None:
     consumer._tick_age_budget_ms = 1000.0
     consumer.last_frame_id = 9
     consumer.last_frame_at = "2026-07-20T00:00:00Z"
-    consumer._dashboard_state = DashboardReadState(
+    consumer._dashboard_state_slot = [DashboardReadState(
         connection_state="DEGRADED", account=None, positions=(), ticks={}, symbol_meta={},
         bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=9,
         last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=12.5,
-    )
+    )]
 
     state = consumer.dashboard_state()
     consumer.last_frame_id = 10
@@ -100,11 +105,11 @@ def test_consumer_dashboard_state_retains_all_positions_and_symbol_metadata() ->
     consumer.last_symbol_meta = {meta.resolved: meta}
     consumer.last_frame_id = 1
     consumer.last_frame_at = "2026-07-20T00:00:00Z"
-    consumer._dashboard_state = DashboardReadState(
+    consumer._dashboard_state_slot = [DashboardReadState(
         connection_state="CONNECTED", account=None, positions=(managed, foreign), ticks={},
         symbol_meta={meta.resolved: meta}, bot_magic=240101, tick_age_budget_ms=1000.0,
         last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=None,
-    )
+    )]
 
     state = consumer.dashboard_state()
 
@@ -115,6 +120,22 @@ def test_consumer_dashboard_state_retains_all_positions_and_symbol_metadata() ->
 
 def _position(*, ticket: int, magic: int) -> PositionRow:
     return PositionRow(ticket, "XAUUSDm", magic, 0.1, 2300.0, 2301.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0, 1_700_000_000_000, ticket, "")
+
+
+def test_cold_start_and_authoritative_flat_have_distinct_availability() -> None:
+    cold = DashboardReadState(
+        connection_state="DISCONNECTED", account=None, positions=(), ticks={}, symbol_meta={},
+        bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=0,
+        last_frame_at=None, poll_latency_ms=None, positions_available=False,
+    )
+    flat = cold.with_frame(
+        connection_state="CONNECTED", account=None, ticks={}, symbol_meta={},
+        last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=1.0,
+        positions=(),
+    )
+
+    assert (cold.positions_available, cold.positions_frame_id, cold.positions_observed_at) == (False, 0, None)
+    assert (flat.positions_available, flat.positions_frame_id, flat.positions_observed_at) == (True, 1, "2026-07-20T00:00:00Z")
 
 
 def test_unavailable_positions_keep_original_provenance() -> None:
@@ -137,6 +158,56 @@ def test_unavailable_positions_keep_original_provenance() -> None:
     assert current.positions_frame_id == 1
     assert current.positions_observed_at == "2026-07-20T00:00:00Z"
     assert current.last_frame_id == 2
+
+
+@pytest.mark.asyncio
+async def test_consumer_batch_never_exposes_new_cursor_with_old_state(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "journal.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    metrics = GatewayMetrics()
+    consumer = BrokerStateConsumer(
+        bus=bus,
+        slot=LatestFrameSlot(metrics),
+        metrics=metrics,
+        bot_magic=240101,
+        runtime_id="rt",
+    )
+    subscriber = await bus.subscribe("dashboard-test")
+    committed = asyncio.Event()
+    release = asyncio.Event()
+    original = journal.append_events_committed
+
+    def pause_after_commit(envelopes):
+        original(envelopes)
+        asyncio.run_coroutine_threadsafe(_signal_and_wait(), loop).result()
+
+    async def _signal_and_wait() -> None:
+        committed.set()
+        await release.wait()
+
+    loop = asyncio.get_running_loop()
+    journal.append_events_committed = pause_after_commit
+    frame = BrokerStateFrame(
+        frame_id=1, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:00Z", positions=(_position(ticket=1, magic=99),),
+        account=None, ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}),
+        errors=(), mt5_last_error=None,
+    )
+    publication = asyncio.create_task(consumer.process_frame(frame))
+    await committed.wait()
+    capture = asyncio.create_task(bus.capture_boundary(consumer.dashboard_state))
+    await asyncio.sleep(0)
+    assert capture.done() is False
+    release.set()
+    published = await publication
+    state, _, revision, sequence = await capture
+    delivered = await subscriber.get()
+
+    assert state.last_frame_id == 1
+    assert revision == sequence == len(published)
+    assert delivered.sequence == 1
+    await bus.close()
 
 
 def test_dashboard_read_state_rejects_invalid_connection_state() -> None:

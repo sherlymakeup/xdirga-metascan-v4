@@ -82,7 +82,7 @@ describe("management commands — safe-mode / handshake gating", () => {
 
   it("accepts the pinned backend canonical schema hash", () => {
     expect(EXPECTED_RUNTIME_CONTRACT.schemaHash).toBe(
-      "2e93c9ef25a88061c9b43b1a67b2eb3f95b2dc03612731d96d14ddccc97895f4",
+      "40e05c10e10834573d1151fc7b25fe9556f5ac4a614c910860a6962d84d94cf9",
     );
   });
 

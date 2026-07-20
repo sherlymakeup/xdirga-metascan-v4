@@ -75,7 +75,7 @@ export interface BrokerStatus {
   connection: ConnectionState;
   tradingPermitted: boolean;
   terminalVersion: string;
-  lastTickAt: string;
+  lastTickAt: string | null;
   lastRequestAt: string;
   queueDepth: number;
   avgLatencyMs: number;
@@ -518,6 +518,12 @@ export type ScenarioKey =
   | "executionUnknown";
 
 export interface CockpitSnapshot {
+  positionsAvailable: boolean;
+  positionsSourceFrameId: number | null;
+  positionsObservedAt: string | null;
+  accountAvailable: boolean;
+  accountSourceFrameId: number | null;
+  accountObservedAt: string | null;
   runtime: RuntimeStatus;
   subsystems: SubsystemHealth[];
   broker: BrokerStatus;

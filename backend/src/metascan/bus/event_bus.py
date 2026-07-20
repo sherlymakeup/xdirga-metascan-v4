@@ -221,7 +221,10 @@ class EventBus:
             try:
                 q.put_nowait(stamped)
             except asyncio.QueueFull:
-                self._overflow(sub, stamped)
+                try:
+                    self._overflow(sub, stamped)
+                except Exception:
+                    logger.exception("subscriber fanout failed subscriber_id=%s", sub.id)
 
     def _overflow(self, sub: Subscription, stamped: RuntimeEventEnvelope) -> None:
         q = sub._queue_ref()
@@ -256,6 +259,35 @@ class EventBus:
     async def capture_boundary(self, capture: Callable[[], _T]) -> tuple[_T, str, int, int]:
         async with self._publish_lock:
             return capture(), self._boot_id, self._revision, self._sequence
+
+    async def publish_state_batch(
+        self,
+        state_slot: list[_T],
+        state: _T,
+        envelopes: tuple[RuntimeEventEnvelope, ...],
+    ) -> tuple[RuntimeEventEnvelope, ...]:
+        if self._closed or not self._started:
+            raise EventBusClosed("event bus closed")
+        async with self._publish_lock:
+            previous_sequence, previous_revision = self._sequence, self._revision
+            stamped: list[RuntimeEventEnvelope] = []
+            for envelope in envelopes:
+                item, _, _ = self._stamp(envelope, mutates_state=True)
+                stamped.append(item)
+            loop = asyncio.get_running_loop()
+            try:
+                await loop.run_in_executor(
+                    self._journal.executor,
+                    self._journal.append_events_committed,
+                    tuple(stamped),
+                )
+            except Exception:
+                self._restore(previous_sequence, previous_revision)
+                raise
+            state_slot[0] = state
+            for item in stamped:
+                self._fanout(item)
+            return tuple(stamped)
 
     async def publish(
         self,

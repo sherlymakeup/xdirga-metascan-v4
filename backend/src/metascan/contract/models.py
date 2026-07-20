@@ -362,7 +362,7 @@ class BrokerStatus(WireModel):
     connection: ConnectionState
     trading_permitted: bool
     terminal_version: str
-    last_tick_at: str
+    last_tick_at: str | None
     last_request_at: str
     queue_depth: int
     avg_latency_ms: float
@@ -539,6 +539,12 @@ class EquityPoint(WireModel):
 
 
 class CockpitSnapshot(WireModel):
+    positions_available: bool
+    positions_source_frame_id: int | None
+    positions_observed_at: str | None
+    account_available: bool
+    account_source_frame_id: int | None
+    account_observed_at: str | None
     runtime: RuntimeStatus
     subsystems: list[SubsystemHealth]
     broker: BrokerStatus

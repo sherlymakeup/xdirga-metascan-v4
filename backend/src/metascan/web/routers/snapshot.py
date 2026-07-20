@@ -29,6 +29,12 @@ def _empty_snapshot() -> dict:
     """Minimal valid CockpitSnapshot for SP4 (no MT5 execution)."""
     now = _now_iso()
     return {
+        "positionsAvailable": False,
+        "positionsSourceFrameId": None,
+        "positionsObservedAt": None,
+        "accountAvailable": False,
+        "accountSourceFrameId": None,
+        "accountObservedAt": None,
         "runtime": {
             "id": _RUNTIME_ID,
             "sessionId": "session-sp4",
@@ -59,7 +65,7 @@ def _empty_snapshot() -> dict:
             "connection": "DISCONNECTED",
             "tradingPermitted": False,
             "terminalVersion": "",
-            "lastTickAt": now,
+            "lastTickAt": None,
             "lastRequestAt": now,
             "queueDepth": 0,
             "avgLatencyMs": 0.0,
@@ -130,11 +136,19 @@ def _ownership(*, magic: int, bot_magic: int | None) -> str:
 
 def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> dict:
     snapshot = _empty_snapshot()
+    snapshot.update({
+        "positionsAvailable": state.positions_available,
+        "positionsSourceFrameId": state.positions_frame_id if state.positions_observed_at is not None else None,
+        "positionsObservedAt": state.positions_observed_at,
+        "accountAvailable": state.account_available,
+        "accountSourceFrameId": state.account_frame_id,
+        "accountObservedAt": state.account_observed_at,
+    })
     observed_at = state.last_frame_at or _now_iso()
     connected = state.connection_state == "CONNECTED"
     now_msc = now_utc.timestamp() * 1000
     latest_tick_msc = max((tick.time_msc for tick in state.ticks.values()), default=0)
-    last_tick_at = _msc_iso(latest_tick_msc) or observed_at
+    last_tick_at = _msc_iso(latest_tick_msc)
     snapshot["runtime"].update({
         "state": "READY" if connected else "DEGRADED",
         "stateReason": f"MT5_{state.connection_state}",

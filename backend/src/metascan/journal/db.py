@@ -163,6 +163,22 @@ class Journal:
         else:
             self.run_on_writer(_do)
 
+    def append_events_committed(self, envelopes: tuple[RuntimeEventEnvelope, ...]) -> None:
+        if not self._open or self._conn is None:
+            raise JournalError("journal not open")
+        from metascan.journal import events as events_mod
+
+        def _do(conn: sqlite3.Connection) -> None:
+            try:
+                for envelope in envelopes:
+                    events_mod.insert_event(conn, envelope)
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
+
+        self.run_on_writer(_do)
+
     def read_events(
         self, boot_id: str, after_sequence: int, limit: int
     ) -> list[RuntimeEventEnvelope]:

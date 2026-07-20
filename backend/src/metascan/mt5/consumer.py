@@ -88,7 +88,7 @@ class BrokerStateConsumer:
         self._last_tick_msc: dict[str, int] = {}
         self._degrade_reasons: set[str] = set()
         self._last_frame_mono: float = self._mono.monotonic()
-        self._dashboard_state = DashboardReadState(
+        initial_dashboard_state = DashboardReadState(
             connection_state="DISCONNECTED",
             account=None,
             positions=(),
@@ -101,12 +101,13 @@ class BrokerStateConsumer:
             poll_latency_ms=None,
             positions_available=False,
         )
+        self._dashboard_state_slot = [initial_dashboard_state]
 
     def dashboard_state(self) -> DashboardReadState:
-        return self._dashboard_state
+        return self._dashboard_state_slot[0]
 
-    def _publish_dashboard_frame(self, frame: BrokerStateFrame) -> None:
-        self._dashboard_state = self._dashboard_state.with_frame(
+    def _build_dashboard_frame(self, frame: BrokerStateFrame) -> DashboardReadState:
+        return self.dashboard_state().with_frame(
             connection_state=self.connection_state,
             account=frame.account,
             ticks=frame.ticks,
@@ -235,7 +236,6 @@ class BrokerStateConsumer:
                         },
                         severity="CRITICAL",
                     )
-                    await self._bus.publish(env, mutates_state=True)
                     published.append(env)
             self.quarantine_tickets = new_q
             if new_q:
@@ -274,7 +274,6 @@ class BrokerStateConsumer:
                         "reasons": sorted(list(reasons)),
                     },
                 )
-                await self._bus.publish(env_conn, mutates_state=True)
                 published.append(env_conn)
 
                 health_state = "DOWN" if new_state == "DISCONNECTED" else ("DEGRADED" if new_state == "DEGRADED" else "OK")
@@ -288,14 +287,13 @@ class BrokerStateConsumer:
                         "reasons": sorted(list(reasons)),
                     },
                 )
-                await self._bus.publish(env_health, mutates_state=True)
                 published.append(env_health)
 
             if frame.positions_unavailable:
                 self.last_frame_id = frame.frame_id
                 self.last_frame_at = frame.polled_at_wall
-                self._publish_dashboard_frame(frame)
-                return published
+                state = self._build_dashboard_frame(frame)
+                return list(await self._bus.publish_state_batch(self._dashboard_state_slot, state, tuple(published)))
 
             self.dashboard_positions = frame.positions
             managed = {p.ticket: p for p in frame.positions if p.magic == self._bot_magic}
@@ -317,7 +315,6 @@ class BrokerStateConsumer:
                     )
                     if cmd_id is not None:
                         env_c = env_c.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
-                    await self._bus.publish(env_c, mutates_state=True)
                     published.append(env_c)
 
                     env_t = _envelope(
@@ -331,7 +328,6 @@ class BrokerStateConsumer:
                     )
                     if cmd_id is not None:
                         env_t = env_t.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
-                    await self._bus.publish(env_t, mutates_state=True)
                     published.append(env_t)
 
                     self._pending.clear(ticket)
@@ -347,7 +343,6 @@ class BrokerStateConsumer:
                         payload=position_payload(new, opened_at=wall),
                         position_id=position_id_for(ticket),
                     )
-                    await self._bus.publish(env_o, mutates_state=True)
                     published.append(env_o)
                     self.last_positions[ticket] = new
                     continue
@@ -382,8 +377,6 @@ class BrokerStateConsumer:
                         metadata = {"command_id": cmd_id, "correlation_id": corr_id}
                         env_pc = env_pc.model_copy(update=metadata)
                         env_up = env_up.model_copy(update=metadata)
-                    await self._bus.publish(env_pc, mutates_state=True)
-                    await self._bus.publish(env_up, mutates_state=True)
                     published.extend((env_pc, env_up))
                     if matched:
                         self._pending.clear(ticket)
@@ -408,7 +401,6 @@ class BrokerStateConsumer:
                             },
                             position_id=position_id_for(ticket),
                         )
-                        await self._bus.publish(env_pr, mutates_state=True)
                         published.append(env_pr)
 
                         env_up = _envelope(
@@ -418,7 +410,6 @@ class BrokerStateConsumer:
                             payload=position_payload(new, opened_at=wall),
                             position_id=position_id_for(ticket),
                         )
-                        await self._bus.publish(env_up, mutates_state=True)
                         published.append(env_up)
                     self.last_positions[ticket] = new
                     continue
@@ -434,7 +425,6 @@ class BrokerStateConsumer:
                         payload=position_payload(new, opened_at=wall),
                         position_id=position_id_for(ticket),
                     )
-                    await self._bus.publish(env_up, mutates_state=True)
                     published.append(env_up)
                 self.last_positions[ticket] = new
 
@@ -443,7 +433,8 @@ class BrokerStateConsumer:
             self.last_symbol_meta = dict(frame.symbol_meta)
             self.last_frame_id = frame.frame_id
             self.last_frame_at = frame.polled_at_wall
-            self._publish_dashboard_frame(frame)
+            state = self._build_dashboard_frame(frame)
+            published = list(await self._bus.publish_state_batch(self._dashboard_state_slot, state, tuple(published)))
         except Exception:
             logger.exception("diff failed frame_id=%s", frame.frame_id)
         return published
