@@ -22,7 +22,7 @@ import logging
 import pytest
 
 from metascan.contract.hash import GOLDEN_SCHEMA_HASH
-from metascan.contract.models import RuntimeEventEnvelope
+from metascan.contract.models import CockpitSnapshot, RuntimeEventEnvelope
 from metascan.mt5.types import AccountRow, DashboardReadState, PositionRow, SymbolMeta, TickRow
 from metascan.web.app import TokenRedactingFilter, create_app
 from metascan.web.dependencies import get_bus, get_config, get_journal
@@ -106,6 +106,7 @@ async def test_snapshot_uses_retained_mt5_read_state(app_client):
     assert snapshot["positions"][0]["strategy"] is None
     assert snapshot["positions"][0]["riskAmount"] is None
     assert snapshot["positions"][0]["stopLoss"] is None
+    assert snapshot["positions"][0]["protection"] == "PARTIALLY_PROTECTED"
     assert snapshot["positions"][0]["netPnl"] == 8.5
     assert snapshot["positions"][0]["openedAt"] == "2023-11-14T22:13:20Z"
     market = snapshot["markets"][0]
@@ -118,7 +119,35 @@ async def test_snapshot_uses_retained_mt5_read_state(app_client):
     assert market["sessionOpen"] is None
     assert market["swapLong"] is None
     assert market["marginRequirement"] is None
+    assert snapshot["account"]["floatingPnl"] == 10.0
+    assert snapshot["broker"]["lastTickAt"] == "2023-11-14T22:13:20Z"
     assert snapshot["runtime"]["state"] == "READY"
+    CockpitSnapshot.model_validate(snapshot)
+
+
+@pytest.mark.asyncio
+async def test_snapshot_captures_state_and_cursor_under_publication_boundary(event_bus):
+    entered = asyncio.Event()
+    release = asyncio.Event()
+
+    async def hold_publication() -> None:
+        async with event_bus._publish_lock:
+            entered.set()
+            await release.wait()
+
+    holder = asyncio.create_task(hold_publication())
+    await entered.wait()
+    try:
+        capture = asyncio.create_task(event_bus.capture_boundary(lambda: "atomic-state"))
+        await asyncio.sleep(0)
+        assert capture.done() is False
+    finally:
+        release.set()
+        await holder
+
+    state, boot_id, revision, sequence = await capture
+    assert state == "atomic-state"
+    assert (boot_id, revision, sequence) == (event_bus.boot_id, event_bus.revision, event_bus.sequence)
 
 
 # ── old path not exposed ──────────────────────────────────────────────────────

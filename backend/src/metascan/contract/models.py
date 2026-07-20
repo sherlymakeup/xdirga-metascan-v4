@@ -234,6 +234,9 @@ class Position(WireModel):
     id: str
     broker_ticket: str
     ownership: Literal["BOT_MANAGED", "FOREIGN", "UNKNOWN"]
+    data_available: bool
+    source_frame_id: int
+    observed_at: str | None
     symbol: str
     side: OrderSide
     volume: float

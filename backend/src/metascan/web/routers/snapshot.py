@@ -128,10 +128,13 @@ def _ownership(*, magic: int, bot_magic: int | None) -> str:
     return "BOT_MANAGED" if magic == bot_magic else "FOREIGN"
 
 
-def _read_snapshot(state: DashboardReadState) -> dict:
+def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> dict:
     snapshot = _empty_snapshot()
     observed_at = state.last_frame_at or _now_iso()
     connected = state.connection_state == "CONNECTED"
+    now_msc = now_utc.timestamp() * 1000
+    latest_tick_msc = max((tick.time_msc for tick in state.ticks.values()), default=0)
+    last_tick_at = _msc_iso(latest_tick_msc) or observed_at
     snapshot["runtime"].update({
         "state": "READY" if connected else "DEGRADED",
         "stateReason": f"MT5_{state.connection_state}",
@@ -141,7 +144,7 @@ def _read_snapshot(state: DashboardReadState) -> dict:
     snapshot["broker"].update({
         "connection": state.connection_state,
         "tradingPermitted": False,
-        "lastTickAt": observed_at,
+        "lastTickAt": last_tick_at,
         "lastRequestAt": observed_at,
         "avgLatencyMs": state.poll_latency_ms or 0.0,
     })
@@ -150,6 +153,9 @@ def _read_snapshot(state: DashboardReadState) -> dict:
             "id": f"pos-{position.ticket}",
             "brokerTicket": str(position.ticket),
             "ownership": _ownership(magic=position.magic, bot_magic=state.bot_magic),
+            "dataAvailable": state.positions_available,
+            "sourceFrameId": state.positions_frame_id,
+            "observedAt": state.positions_observed_at,
             "symbol": position.symbol,
             "side": "BUY" if position.type == 0 else "SELL",
             "volume": position.volume,
@@ -163,7 +169,7 @@ def _read_snapshot(state: DashboardReadState) -> dict:
             "riskPct": None,
             "openedAt": _msc_iso(position.time_msc),
             "strategy": None,
-            "protection": "SL_TP" if position.sl and position.tp else ("SL_ONLY" if position.sl else ("TP_ONLY" if position.tp else "NONE")),
+            "protection": "PROTECTED" if position.sl and position.tp else ("PARTIALLY_PROTECTED" if position.sl or position.tp else "UNPROTECTED"),
             "state": "OPEN",
             "rMultiple": None,
             "mfe": None,
@@ -186,8 +192,8 @@ def _read_snapshot(state: DashboardReadState) -> dict:
             "changePct": None,
             "sessionOpen": None,
             "tradingPermitted": False,
-            "tickAgeMs": max(0.0, (datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00")).timestamp() * 1000) - tick.time_msc),
-            "freshness": "FRESH" if connected and max(0.0, (datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00")).timestamp() * 1000) - tick.time_msc) <= state.tick_age_budget_ms else "STALE",
+            "tickAgeMs": max(0.0, now_msc - tick.time_msc),
+            "freshness": "FRESH" if connected and max(0.0, now_msc - tick.time_msc) <= state.tick_age_budget_ms else "STALE",
             "contractSize": state.symbol_meta[tick.symbol].trade_contract_size,
             "tickSize": state.symbol_meta[tick.symbol].tick_size,
             "minVolume": state.symbol_meta[tick.symbol].volume_min,
@@ -201,7 +207,7 @@ def _read_snapshot(state: DashboardReadState) -> dict:
         if tick.symbol in state.symbol_meta
     ]
     if state.account is not None:
-        floating_pnl = sum(position.profit + position.swap + position.commission for position in state.positions)
+        floating_pnl = sum(position.profit for position in state.positions)
         snapshot["account"].update({
             "currency": state.account.currency,
             "balance": state.account.balance,
@@ -223,15 +229,18 @@ async def get_snapshot(
     bus: EventBus = Depends(get_bus),
     _token: str = Depends(verify_token),
 ) -> dict:
-    now = _now_iso()
+    now_utc = datetime.datetime.now(datetime.timezone.utc)
+    now = now_utc.isoformat().replace("+00:00", "Z")
     consumer = getattr(request.app.state, "consumer", None)
-    read_state = consumer.dashboard_state() if consumer is not None else None
+    read_state, boot_id, revision, sequence = await bus.capture_boundary(
+        lambda: consumer.dashboard_state() if consumer is not None else None
+    )
     return {
         "metadata": {
             "runtimeId": _RUNTIME_ID,
-            "bootId": bus.boot_id,
-            "revision": bus.revision,
-            "sequence": bus.sequence,
+            "bootId": boot_id,
+            "revision": revision,
+            "sequence": sequence,
             "generatedAt": now,
             "serverTimestamp": now,
             "protocolId": "xdirga-runtime-v4",
@@ -240,5 +249,5 @@ async def get_snapshot(
             "schemaHash": GOLDEN_SCHEMA_HASH,
             "source": "LOCAL_RUNTIME",
         },
-        "snapshot": _read_snapshot(read_state) if read_state is not None else _empty_snapshot(),
+        "snapshot": _read_snapshot(read_state, now_utc=now_utc) if read_state is not None else _empty_snapshot(),
     }

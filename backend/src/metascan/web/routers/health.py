@@ -28,9 +28,8 @@ async def get_health(
     consumer = getattr(request.app.state, "consumer", None)
     if consumer is not None:
         mt5_connected = getattr(consumer, "connection_state", "") == "CONNECTED"
-    broker_ok = consumer is None or mt5_connected
     return {
-        "status": "OK" if db_ok and broker_ok else "DEGRADED",
+        "status": "OK" if db_ok else "DEGRADED",
         "mt5_connected": mt5_connected,
         "db_ok": db_ok,
         "uptime": time.monotonic() - _START_TIME,

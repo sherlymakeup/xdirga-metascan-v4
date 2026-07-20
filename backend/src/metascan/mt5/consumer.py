@@ -88,19 +88,33 @@ class BrokerStateConsumer:
         self._last_tick_msc: dict[str, int] = {}
         self._degrade_reasons: set[str] = set()
         self._last_frame_mono: float = self._mono.monotonic()
-
-    def dashboard_state(self) -> DashboardReadState:
-        return DashboardReadState(
-            connection_state=self.connection_state,
-            account=self.last_account,
-            positions=self.dashboard_positions,
-            ticks=self.last_ticks,
-            symbol_meta=self.last_symbol_meta,
+        self._dashboard_state = DashboardReadState(
+            connection_state="DISCONNECTED",
+            account=None,
+            positions=(),
+            ticks={},
+            symbol_meta={},
             bot_magic=self._bot_magic,
             tick_age_budget_ms=self._tick_age_budget_ms,
-            last_frame_id=self.last_frame_id,
-            last_frame_at=self.last_frame_at,
+            last_frame_id=0,
+            last_frame_at=None,
+            poll_latency_ms=None,
+            positions_available=False,
+        )
+
+    def dashboard_state(self) -> DashboardReadState:
+        return self._dashboard_state
+
+    def _publish_dashboard_frame(self, frame: BrokerStateFrame) -> None:
+        self._dashboard_state = self._dashboard_state.with_frame(
+            connection_state=self.connection_state,
+            account=frame.account,
+            ticks=frame.ticks,
+            symbol_meta=frame.symbol_meta,
+            last_frame_id=frame.frame_id,
+            last_frame_at=frame.polled_at_wall,
             poll_latency_ms=self._metrics.cycle_p50(),
+            positions=None if frame.positions_unavailable else frame.positions,
         )
 
     def start(self) -> asyncio.Task[None]:
@@ -279,6 +293,8 @@ class BrokerStateConsumer:
 
             if frame.positions_unavailable:
                 self.last_frame_id = frame.frame_id
+                self.last_frame_at = frame.polled_at_wall
+                self._publish_dashboard_frame(frame)
                 return published
 
             self.dashboard_positions = frame.positions
@@ -427,6 +443,7 @@ class BrokerStateConsumer:
             self.last_symbol_meta = dict(frame.symbol_meta)
             self.last_frame_id = frame.frame_id
             self.last_frame_at = frame.polled_at_wall
+            self._publish_dashboard_frame(frame)
         except Exception:
             logger.exception("diff failed frame_id=%s", frame.frame_id)
         return published

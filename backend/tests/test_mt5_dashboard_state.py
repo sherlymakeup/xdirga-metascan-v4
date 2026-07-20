@@ -69,6 +69,11 @@ def test_consumer_dashboard_state_copies_retained_read_model() -> None:
     consumer._tick_age_budget_ms = 1000.0
     consumer.last_frame_id = 9
     consumer.last_frame_at = "2026-07-20T00:00:00Z"
+    consumer._dashboard_state = DashboardReadState(
+        connection_state="DEGRADED", account=None, positions=(), ticks={}, symbol_meta={},
+        bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=9,
+        last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=12.5,
+    )
 
     state = consumer.dashboard_state()
     consumer.last_frame_id = 10
@@ -95,6 +100,11 @@ def test_consumer_dashboard_state_retains_all_positions_and_symbol_metadata() ->
     consumer.last_symbol_meta = {meta.resolved: meta}
     consumer.last_frame_id = 1
     consumer.last_frame_at = "2026-07-20T00:00:00Z"
+    consumer._dashboard_state = DashboardReadState(
+        connection_state="CONNECTED", account=None, positions=(managed, foreign), ticks={},
+        symbol_meta={meta.resolved: meta}, bot_magic=240101, tick_age_budget_ms=1000.0,
+        last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=None,
+    )
 
     state = consumer.dashboard_state()
 
@@ -105,6 +115,28 @@ def test_consumer_dashboard_state_retains_all_positions_and_symbol_metadata() ->
 
 def _position(*, ticket: int, magic: int) -> PositionRow:
     return PositionRow(ticket, "XAUUSDm", magic, 0.1, 2300.0, 2301.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0, 1_700_000_000_000, ticket, "")
+
+
+def test_unavailable_positions_keep_original_provenance() -> None:
+    position = _position(ticket=1, magic=240101)
+    previous = DashboardReadState(
+        connection_state="CONNECTED", account=None, positions=(position,), ticks={}, symbol_meta={},
+        bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=1,
+        last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=1.0,
+        positions_available=True, positions_frame_id=1,
+        positions_observed_at="2026-07-20T00:00:00Z",
+    )
+    current = previous.with_frame(
+        connection_state="DEGRADED", account=None, ticks={}, symbol_meta={},
+        last_frame_id=2, last_frame_at="2026-07-20T00:00:01Z", poll_latency_ms=2.0,
+        positions=None,
+    )
+
+    assert current.positions == (position,)
+    assert current.positions_available is False
+    assert current.positions_frame_id == 1
+    assert current.positions_observed_at == "2026-07-20T00:00:00Z"
+    assert current.last_frame_id == 2
 
 
 def test_dashboard_read_state_rejects_invalid_connection_state() -> None:

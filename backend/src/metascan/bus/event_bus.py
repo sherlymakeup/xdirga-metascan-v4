@@ -5,7 +5,7 @@ import functools
 import logging
 import uuid
 from dataclasses import dataclass
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable, TypeVar
 
 from metascan.contract.models import RuntimeCommandStatus, RuntimeEventEnvelope
 from metascan.pipeline.request import InternalCommandRecord
@@ -19,6 +19,7 @@ CLOSED_KIND = "bus_closed"
 DEFAULT_SUBSCRIBER_MAXSIZE = 1024
 
 QueueItem = "RuntimeEventEnvelope | ResyncMarker | ClosedMarker"
+_T = TypeVar("_T")
 
 
 class EventBusClosed(RuntimeError):
@@ -251,6 +252,10 @@ class EventBus:
             stamped.sequence,
             sub.maxsize,
         )
+
+    async def capture_boundary(self, capture: Callable[[], _T]) -> tuple[_T, str, int, int]:
+        async with self._publish_lock:
+            return capture(), self._boot_id, self._revision, self._sequence
 
     async def publish(
         self,

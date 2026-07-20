@@ -85,6 +85,9 @@ class DashboardReadState:
     last_frame_id: int
     last_frame_at: str | None
     poll_latency_ms: float | None
+    positions_available: bool = True
+    positions_frame_id: int = 0
+    positions_observed_at: str | None = None
 
     def __post_init__(self) -> None:
         if self.connection_state not in {"CONNECTED", "DISCONNECTED", "DEGRADED"}:
@@ -92,6 +95,37 @@ class DashboardReadState:
         object.__setattr__(self, "positions", tuple(self.positions))
         object.__setattr__(self, "ticks", MappingProxyType(dict(self.ticks)))
         object.__setattr__(self, "symbol_meta", MappingProxyType(dict(self.symbol_meta)))
+        if self.positions_available:
+            object.__setattr__(self, "positions_frame_id", self.last_frame_id)
+            object.__setattr__(self, "positions_observed_at", self.last_frame_at)
+
+    def with_frame(
+        self,
+        *,
+        connection_state: Literal["CONNECTED", "DISCONNECTED", "DEGRADED"],
+        account: AccountRow | None,
+        ticks: Mapping[str, TickRow],
+        symbol_meta: Mapping[str, SymbolMeta],
+        last_frame_id: int,
+        last_frame_at: str,
+        poll_latency_ms: float | None,
+        positions: tuple[PositionRow, ...] | None,
+    ) -> DashboardReadState:
+        return DashboardReadState(
+            connection_state=connection_state,
+            account=account,
+            positions=self.positions if positions is None else positions,
+            ticks=ticks,
+            symbol_meta=symbol_meta,
+            bot_magic=self.bot_magic,
+            tick_age_budget_ms=self.tick_age_budget_ms,
+            last_frame_id=last_frame_id,
+            last_frame_at=last_frame_at,
+            poll_latency_ms=poll_latency_ms,
+            positions_available=positions is not None,
+            positions_frame_id=self.positions_frame_id,
+            positions_observed_at=self.positions_observed_at,
+        )
 
 
 @dataclass(frozen=True, slots=True)

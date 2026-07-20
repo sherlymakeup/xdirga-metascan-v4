@@ -235,6 +235,9 @@ export interface Position {
   id: string;
   brokerTicket: string;
   ownership: "BOT_MANAGED" | "FOREIGN" | "UNKNOWN";
+  dataAvailable: boolean;
+  sourceFrameId: number;
+  observedAt: string | null;
   symbol: string;
   side: OrderSide;
   volume: number;

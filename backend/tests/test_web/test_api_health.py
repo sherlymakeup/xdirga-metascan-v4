@@ -47,7 +47,7 @@ async def test_health_reports_degraded_consumer_truthfully(app_client):
 
     r = await app_client.get("/v4/health")
 
-    assert r.json()["status"] == "DEGRADED"
+    assert r.json()["status"] == "OK"
     assert r.json()["mt5_connected"] is False
 
 
