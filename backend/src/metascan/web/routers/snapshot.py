@@ -226,8 +226,8 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
             and state.account_frame_id == state.positions_frame_id
             and state.account_observed_at == state.positions_observed_at
         )
-        floating_pnl = sum(position.profit for position in state.positions) if same_observation else 0.0
-        open_positions = len(state.positions) if same_observation else 0
+        floating_pnl = sum(position.profit for position in state.positions) if same_observation else None
+        open_positions = len(state.positions) if same_observation else None
         snapshot["account"].update({
             "currency": state.account.currency,
             "balance": state.account.balance,

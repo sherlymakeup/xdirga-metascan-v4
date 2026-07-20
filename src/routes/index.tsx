@@ -235,9 +235,9 @@ function CockpitPage() {
           />
           <MetricCard
             label="Floating PnL"
-            value={fmtMoney(snap.account.floatingPnl)}
-            tone={snap.account.floatingPnl >= 0 ? "ok" : "crit"}
-            hint={`${snap.account.openPositions} open`}
+            value={snap.account.floatingPnl == null ? "—" : fmtMoney(snap.account.floatingPnl)}
+            tone={snap.account.floatingPnl == null ? undefined : snap.account.floatingPnl >= 0 ? "ok" : "crit"}
+            hint={snap.account.openPositions == null ? "—" : `${snap.account.openPositions} open`}
           />
           <MetricCard
             label="Realized Today"

@@ -297,6 +297,37 @@ async def test_batch_repeated_cancellation_finishes_commit_state_and_fanout(tmp_
 
 
 @pytest.mark.asyncio
+async def test_cancelled_failed_commit_rolls_back_and_propagates_cancellation(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "cancel-failed.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    slot = ["old"]
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    def blocked_failure(envelopes):
+        loop.call_soon_threadsafe(entered.set)
+        asyncio.run_coroutine_threadsafe(release.wait(), loop).result()
+        raise RuntimeError("journal unavailable")
+
+    journal.append_events_committed = blocked_failure
+    event = _envelope(type_="runtime.health.changed", runtime_id="rt", wall_iso="2026-07-20T00:00:00Z", payload={})
+    task = asyncio.create_task(bus.publish_state_batch(slot, "new", (event,)))
+    await entered.wait()
+    task.cancel()
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError) as cancelled:
+        await task
+
+    assert isinstance(cancelled.value.__cause__, RuntimeError)
+    assert slot[0] == "old"
+    assert bus.sequence == bus.revision == 0
+    await bus.close()
+
+
+@pytest.mark.asyncio
 async def test_cancelled_pending_close_is_finalized_with_committed_state(tmp_path: Path) -> None:
     journal = Journal(tmp_path / "pending-cancel.sqlite")
     bus = EventBus(journal)
@@ -492,8 +523,8 @@ def test_snapshot_account_four_state_uses_account_provenance() -> None:
         "2026-07-20T00:00:00Z",
         "2026-07-20T00:00:02Z",
     ]
-    assert snapshots[2]["account"]["floatingPnl"] == 0.0
-    assert snapshots[2]["account"]["openPositions"] == 0
+    assert snapshots[2]["account"]["floatingPnl"] is None
+    assert snapshots[2]["account"]["openPositions"] is None
 
 
 def test_dashboard_read_state_rejects_invalid_connection_state() -> None:

@@ -90,14 +90,14 @@ export interface AccountSnapshot {
   margin: number;
   freeMargin: number;
   marginLevel: number;
-  floatingPnl: number;
+  floatingPnl: number | null;
   realizedPnlToday: number;
   realizedPnlWeek: number;
   dailyDrawdown: number;
   maxDrawdown: number;
   grossExposure: number;
   netExposure: number;
-  openPositions: number;
+  openPositions: number | null;
   pendingOrders: number;
   tradesToday: number;
   winRate: number;

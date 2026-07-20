@@ -377,14 +377,14 @@ class AccountSnapshot(WireModel):
     margin: float
     free_margin: float
     margin_level: float
-    floating_pnl: float
+    floating_pnl: float | None
     realized_pnl_today: float
     realized_pnl_week: float
     daily_drawdown: float
     max_drawdown: float
     gross_exposure: float
     net_exposure: float
-    open_positions: int
+    open_positions: int | None
     pending_orders: int
     trades_today: int
     win_rate: float

@@ -290,13 +290,17 @@ class EventBus:
                     task = asyncio.current_task()
                     if task is not None:
                         task.uncancel()
-                except Exception:
+                except Exception as exc:
                     self._restore(previous_sequence, previous_revision)
+                    if cancellation is not None:
+                        raise cancellation from exc
                     raise
             try:
                 commit.result()
-            except Exception:
+            except Exception as exc:
                 self._restore(previous_sequence, previous_revision)
+                if cancellation is not None:
+                    raise cancellation from exc
                 raise
             state_slot[0] = state
             if finalize is not None:

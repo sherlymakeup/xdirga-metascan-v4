@@ -87,6 +87,7 @@ async def test_snapshot_uses_retained_mt5_read_state(app_client):
         last_frame_id=3,
         last_frame_at="2026-07-20T00:00:00Z",
         poll_latency_ms=8.0,
+        account_available=True,
     )
     app_client._transport.app.state.consumer = type(
         "ReadConsumer", (), {"dashboard_state": lambda self: state}
@@ -101,6 +102,7 @@ async def test_snapshot_uses_retained_mt5_read_state(app_client):
     assert snapshot["broker"]["avgLatencyMs"] == 8.0
     assert snapshot["account"]["equity"] == 1010.0
     assert snapshot["account"]["freshness"] == "FRESH"
+    assert snapshot["account"]["updatedAt"] == snapshot["accountObservedAt"]
     assert snapshot["positions"][0]["brokerTicket"] == "7"
     assert snapshot["positions"][0]["ownership"] == "FOREIGN"
     assert snapshot["positions"][0]["strategy"] is None

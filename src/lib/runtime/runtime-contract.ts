@@ -21,7 +21,7 @@ export const RUNTIME_CONTRACT = {
   // Phase 5F.5 — bumped to 4.1 for management + journal contract additions.
   protocolVersion: "4.1.0",
   schemaVersion: "1.1.0",
-  schemaHash: "40e05c10e10834573d1151fc7b25fe9556f5ac4a614c910860a6962d84d94cf9",
+  schemaHash: "d7f2bb01746998090ae85dacd62b6a45fdb8057480d92b783f0854207faaa0fc",
   minRuntimeVersion: "4.1.0",
   minFrontendVersion: "1.0.0",
   frontendVersion: "1.1.0",

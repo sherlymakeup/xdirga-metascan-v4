@@ -144,7 +144,7 @@ function MarketsPage() {
                 <span className="num text-[10px] text-muted-foreground">{p.total}</span>
               </div>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className={cn("num text-base font-semibold", up ? "text-profit" : "text-loss")}>
+                <span className={cn("num text-base font-semibold", p.avg == null ? "text-muted-foreground" : up ? "text-profit" : "text-loss")}>
                   {fmtPct(p.avg, 2)}
                 </span>
                  {p.avg != null && (up ? <TrendingUp className="h-3 w-3 text-profit" /> : <TrendingDown className="h-3 w-3 text-loss" />)}
@@ -269,7 +269,7 @@ function MarketsPage() {
                         {fmtNum(m.spread * pipValue(m), 1)}
                         <span className="ml-0.5 text-[9px] opacity-60">p</span>
                       </td>
-                      <td className={cn("num px-2 py-1.5 text-right font-medium", up ? "text-profit" : "text-loss")}>
+                      <td className={cn("num px-2 py-1.5 text-right font-medium", m.changePct == null ? "text-muted-foreground" : up ? "text-profit" : "text-loss")}>
                         <span className="inline-flex items-center gap-0.5">
                           {m.changePct != null && (up ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />)}
                           {fmtPct(m.changePct == null ? null : Math.abs(m.changePct), 2)}
