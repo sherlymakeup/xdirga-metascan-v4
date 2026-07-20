@@ -92,7 +92,7 @@ def _empty_snapshot() -> dict:
             "winRate": 0.0,
             "profitFactor": 0.0,
             "riskUtilization": 0.0,
-            "updatedAt": now,
+            "updatedAt": None,
             "freshness": "UNAVAILABLE",
         },
         "strategies": [],
@@ -221,7 +221,13 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
         if tick.symbol in state.symbol_meta
     ]
     if state.account is not None:
-        floating_pnl = sum(position.profit for position in state.positions)
+        same_observation = (
+            state.account_frame_id is not None
+            and state.account_frame_id == state.positions_frame_id
+            and state.account_observed_at == state.positions_observed_at
+        )
+        floating_pnl = sum(position.profit for position in state.positions) if same_observation else 0.0
+        open_positions = len(state.positions) if same_observation else 0
         snapshot["account"].update({
             "currency": state.account.currency,
             "balance": state.account.balance,
@@ -230,9 +236,9 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
             "freeMargin": state.account.free_margin,
             "marginLevel": state.account.margin_level,
             "floatingPnl": floating_pnl,
-            "openPositions": len(state.positions),
-            "updatedAt": observed_at,
-            "freshness": "FRESH" if connected else "STALE",
+            "openPositions": open_positions,
+            "updatedAt": state.account_observed_at,
+            "freshness": "FRESH" if state.account_available else "STALE",
         })
     return snapshot
 

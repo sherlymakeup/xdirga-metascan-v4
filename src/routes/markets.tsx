@@ -24,6 +24,26 @@ type SortDir = "asc" | "desc";
 
 const GROUPS: Group[] = ["ALL", "FX", "METALS", "INDICES", "CRYPTO"];
 
+export function marketPulse(markets: MarketSymbol[]) {
+  const groups: MarketSymbol["group"][] = ["FX", "METALS", "INDICES", "CRYPTO"];
+  return groups.map((group) => {
+    const list = markets.filter((market) => market.group === group);
+    const observed = list.filter((market) => market.changePct != null);
+    const up = observed.filter((market) => market.changePct! >= 0).length;
+    const avg = observed.length ? observed.reduce((sum, market) => sum + market.changePct!, 0) / observed.length : null;
+    return {
+      group,
+      total: list.length,
+      observed: observed.length,
+      up,
+      down: observed.length - up,
+      avg,
+      stale: list.filter((market) => market.freshness !== "FRESH").length,
+      breadthPct: observed.length ? (up / observed.length) * 100 : 0,
+    };
+  });
+}
+
 function seededSpark(sym: string, base: number, changePct: number): number[] {
   let s = 0;
   for (let i = 0; i < sym.length; i++) s = (s * 31 + sym.charCodeAt(i)) >>> 0;
@@ -87,18 +107,7 @@ function MarketsPage() {
     });
   }, [snap.markets, group, q, sortKey, sortDir]);
 
-  const pulse = useMemo(() => {
-    const groups: MarketSymbol["group"][] = ["FX", "METALS", "INDICES", "CRYPTO"];
-    return groups.map((g) => {
-      const list = snap.markets.filter((m) => m.group === g);
-       const observed = list.filter((m) => m.changePct != null);
-       const up = observed.filter((m) => m.changePct! >= 0).length;
-       const avg = observed.length ? observed.reduce((s, m) => s + m.changePct!, 0) / observed.length : null;
-
-      const stale = list.filter((m) => m.freshness !== "FRESH").length;
-      return { group: g, total: list.length, up, down: list.length - up, avg, stale };
-    });
-  }, [snap.markets]);
+  const pulse = useMemo(() => marketPulse(snap.markets), [snap.markets]);
 
   const toggleSort = (k: SortKey) => {
     if (sortKey === k) setSortDir(sortDir === "asc" ? "desc" : "asc");
@@ -120,7 +129,6 @@ function MarketsPage() {
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {pulse.map((p) => {
            const up = p.avg != null && p.avg >= 0;
-           const breadthPct = p.total ? (p.up / p.total) * 100 : 0;
 
           return (
             <button
@@ -139,11 +147,12 @@ function MarketsPage() {
                 <span className={cn("num text-base font-semibold", up ? "text-profit" : "text-loss")}>
                   {fmtPct(p.avg, 2)}
                 </span>
-                {up ? <TrendingUp className="h-3 w-3 text-profit" /> : <TrendingDown className="h-3 w-3 text-loss" />}
+                 {p.avg != null && (up ? <TrendingUp className="h-3 w-3 text-profit" /> : <TrendingDown className="h-3 w-3 text-loss" />)}
+
               </div>
               <div className="mt-1.5 flex h-1 overflow-hidden rounded-full bg-muted/60">
-                <div className="bg-profit" style={{ width: `${breadthPct}%` }} />
-                <div className="bg-loss" style={{ width: `${100 - breadthPct}%` }} />
+                <div className="bg-profit" style={{ width: `${p.breadthPct}%` }} />
+                <div className="bg-loss" style={{ width: `${100 - p.breadthPct}%` }} />
               </div>
               <div className="mt-1 flex justify-between text-[10px] text-muted-foreground">
                 <span className="num text-profit">↑{p.up}</span>
@@ -262,7 +271,7 @@ function MarketsPage() {
                       </td>
                       <td className={cn("num px-2 py-1.5 text-right font-medium", up ? "text-profit" : "text-loss")}>
                         <span className="inline-flex items-center gap-0.5">
-                          {up ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />}
+                          {m.changePct != null && (up ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />)}
                           {fmtPct(m.changePct == null ? null : Math.abs(m.changePct), 2)}
                         </span>
                       </td>

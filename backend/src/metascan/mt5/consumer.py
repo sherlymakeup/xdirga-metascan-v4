@@ -279,8 +279,8 @@ class BrokerStateConsumer:
             if tick_age_degrade:
                 reasons.add("TICK_AGE")
 
-            foreign = [p for p in frame.positions if p.magic != self._bot_magic]
-            new_q = {p.ticket for p in foreign}
+            foreign = [] if frame.positions_unavailable else [p for p in frame.positions if p.magic != self._bot_magic]
+            new_q = set(previous.quarantine_tickets) if frame.positions_unavailable else {p.ticket for p in foreign}
             wall = self._wall.now_iso()
             for p in foreign:
                 if p.ticket not in self.quarantine_tickets:
@@ -503,13 +503,21 @@ class BrokerStateConsumer:
                 dashboard=dashboard,
                 pending_clears=frozenset(pending_clears),
             )
-            published = list(await self._bus.publish_state_batch(self._frame_state_slot, candidate, tuple(published)))
-            install_clears = getattr(self._pending, "install_clears", None)
-            if install_clears is not None:
-                install_clears(candidate.pending_clears)
-            else:
-                for ticket in candidate.pending_clears:
-                    self._pending.clear(ticket)
+            def finalize() -> None:
+                install_clears = getattr(self._pending, "install_clears", None)
+                if install_clears is not None:
+                    install_clears(candidate.pending_clears)
+                else:
+                    for ticket in candidate.pending_clears:
+                        self._pending.clear(ticket)
+
+            published = list(await self._bus.publish_state_batch(
+                self._frame_state_slot,
+                candidate,
+                tuple(published),
+                finalize=finalize,
+            ))
         except Exception:
+            published = []
             logger.exception("diff failed frame_id=%s", frame.frame_id)
         return published

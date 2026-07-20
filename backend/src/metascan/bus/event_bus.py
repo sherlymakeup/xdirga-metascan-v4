@@ -265,6 +265,7 @@ class EventBus:
         state_slot: list[_T],
         state: _T,
         envelopes: tuple[RuntimeEventEnvelope, ...],
+        finalize: Callable[[], None] | None = None,
     ) -> tuple[RuntimeEventEnvelope, ...]:
         if self._closed or not self._started:
             raise EventBusClosed("event bus closed")
@@ -281,22 +282,25 @@ class EventBus:
                 tuple(stamped),
             )
             cancellation: asyncio.CancelledError | None = None
-            try:
-                await asyncio.shield(commit)
-            except asyncio.CancelledError as exc:
-                cancellation = exc
-                task = asyncio.current_task()
-                if task is not None:
-                    task.uncancel()
+            while not commit.done():
                 try:
                     await asyncio.shield(commit)
+                except asyncio.CancelledError as exc:
+                    cancellation = exc
+                    task = asyncio.current_task()
+                    if task is not None:
+                        task.uncancel()
                 except Exception:
                     self._restore(previous_sequence, previous_revision)
                     raise
+            try:
+                commit.result()
             except Exception:
                 self._restore(previous_sequence, previous_revision)
                 raise
             state_slot[0] = state
+            if finalize is not None:
+                finalize()
             for item in stamped:
                 self._fanout(item)
             if cancellation is not None:

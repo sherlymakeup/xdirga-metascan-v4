@@ -13,6 +13,8 @@ from metascan.mt5.consumer import BrokerStateConsumer, _envelope
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
 from metascan.mt5.types import AccountRow, BrokerStateFrame, ConsumerFrameState, DashboardReadState, PositionRow, SymbolMeta, TickRow
+from metascan.pipeline.pending_intent import PendingIntentRegistry
+from metascan.web.routers.snapshot import _read_snapshot
 
 
 def test_dashboard_read_state_is_frozen_and_copies_collections() -> None:
@@ -258,6 +260,115 @@ async def test_batch_cancellation_finishes_commit_state_and_fanout(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_batch_repeated_cancellation_finishes_commit_state_and_fanout(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "double-cancel.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    subscriber = await bus.subscribe("double-cancel-test")
+    slot = ["old"]
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = journal.append_events_committed
+    loop = asyncio.get_running_loop()
+
+    def blocked(envelopes):
+        loop.call_soon_threadsafe(entered.set)
+        asyncio.run_coroutine_threadsafe(release.wait(), loop).result()
+        original(envelopes)
+
+    journal.append_events_committed = blocked
+    event = _envelope(type_="runtime.health.changed", runtime_id="rt", wall_iso="2026-07-20T00:00:00Z", payload={})
+    task = asyncio.create_task(bus.publish_state_batch(slot, "new", (event,)))
+    await entered.wait()
+    task.cancel()
+    await asyncio.sleep(0)
+    task.cancel()
+    await asyncio.sleep(0)
+    assert slot[0] == "old"
+    release.set()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    delivered = await subscriber.get()
+    assert slot[0] == "new"
+    assert delivered.sequence == bus.sequence == 1
+    await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_cancelled_pending_close_is_finalized_with_committed_state(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "pending-cancel.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    metrics = GatewayMetrics()
+    pending = PendingIntentRegistry()
+    consumer = BrokerStateConsumer(bus=bus, slot=LatestFrameSlot(metrics), metrics=metrics, bot_magic=240101, runtime_id="rt", pending=pending)
+    opened = BrokerStateFrame(
+        frame_id=1, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:00Z", positions=(_position(ticket=7, magic=240101),), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    await consumer.process_frame(opened)
+    pending.register_close(7, "cmd-7")
+    closed = BrokerStateFrame(
+        frame_id=2, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:01Z", positions=(), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = journal.append_events_committed
+    loop = asyncio.get_running_loop()
+
+    def blocked(envelopes):
+        loop.call_soon_threadsafe(entered.set)
+        asyncio.run_coroutine_threadsafe(release.wait(), loop).result()
+        original(envelopes)
+
+    journal.append_events_committed = blocked
+    task = asyncio.create_task(consumer.process_frame(closed))
+    await entered.wait()
+    task.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    assert pending.has_pending_close(7) is False
+    assert consumer.last_positions == {}
+    assert any(event.type == "position.closed" for event in journal.read_events(bus.boot_id, 0, 100))
+    await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_unavailable_positions_retain_quarantine(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "quarantine.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    metrics = GatewayMetrics()
+    consumer = BrokerStateConsumer(bus=bus, slot=LatestFrameSlot(metrics), metrics=metrics, bot_magic=240101, runtime_id="rt")
+    foreign = _position(ticket=9, magic=99)
+    available = BrokerStateFrame(
+        frame_id=1, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:00Z", positions=(foreign,), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    unavailable = BrokerStateFrame(
+        frame_id=2, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:01Z", positions=(), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+        positions_unavailable=True,
+    )
+
+    await consumer.process_frame(available)
+    published = await consumer.process_frame(unavailable)
+
+    assert consumer.quarantine_tickets == frozenset({9})
+    assert not any(event.type == "alert.created" for event in published)
+    await bus.close()
+
+
+@pytest.mark.asyncio
 async def test_connection_transition_is_reemitted_after_journal_failure(tmp_path: Path) -> None:
     journal = Journal(tmp_path / "connection-retry.sqlite")
     bus = EventBus(journal)
@@ -288,7 +399,7 @@ async def test_connection_transition_is_reemitted_after_journal_failure(tmp_path
     journal.append_events_committed = fail_once
 
     failed = await consumer.process_frame(frame)
-    assert [event.type for event in failed] == ["broker.connection.changed", "runtime.health.changed"]
+    assert failed == []
     assert journal.read_events(bus.boot_id, 0, 100) == []
     assert consumer.connection_state == "DISCONNECTED"
     assert consumer.dashboard_state().last_frame_id == 0
@@ -338,7 +449,7 @@ async def test_position_lifecycle_is_reemitted_after_journal_failure(tmp_path: P
     journal.append_events_committed = fail_once
 
     failed = await consumer.process_frame(opened)
-    assert [event.type for event in failed] == ["position.opened"]
+    assert failed == []
     assert not any(event.type == "position.opened" for event in journal.read_events(bus.boot_id, 0, 100))
     assert consumer.last_positions == {}
     assert consumer.dashboard_state().last_frame_id == 1
@@ -349,6 +460,40 @@ async def test_position_lifecycle_is_reemitted_after_journal_failure(tmp_path: P
     assert consumer.last_positions == {7: opened.positions[0]}
     assert consumer.dashboard_state().last_frame_id == 2
     await bus.close()
+
+
+def test_snapshot_account_four_state_uses_account_provenance() -> None:
+    import datetime
+
+    account1 = AccountRow(1, 100.0, 101.0, 1.0, 100.0, 101.0, "USD", 0, 0)
+    account2 = AccountRow(1, 200.0, 201.0, 2.0, 199.0, 100.5, "USD", 0, 0)
+    position = _position(ticket=1, magic=240101)
+    now = datetime.datetime(2026, 7, 20, 0, 0, 10, tzinfo=datetime.timezone.utc)
+    cold = DashboardReadState(
+        connection_state="DISCONNECTED", account=None, positions=(), ticks={}, symbol_meta={},
+        bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=0, last_frame_at=None,
+        poll_latency_ms=None, positions_available=False,
+    )
+    success = cold.with_frame(connection_state="CONNECTED", account=account1, ticks={}, symbol_meta={}, last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=1.0, positions=(position,))
+    failed = success.with_frame(connection_state="DEGRADED", account=None, ticks={}, symbol_meta={}, last_frame_id=2, last_frame_at="2026-07-20T00:00:01Z", poll_latency_ms=1.0, positions=())
+    recovered = failed.with_frame(connection_state="CONNECTED", account=account2, ticks={}, symbol_meta={}, last_frame_id=3, last_frame_at="2026-07-20T00:00:02Z", poll_latency_ms=1.0, positions=())
+
+    snapshots = [_read_snapshot(state, now_utc=now) for state in (cold, success, failed, recovered)]
+
+    assert [snapshot["account"]["updatedAt"] for snapshot in snapshots] == [
+        None,
+        "2026-07-20T00:00:00Z",
+        "2026-07-20T00:00:00Z",
+        "2026-07-20T00:00:02Z",
+    ]
+    assert [snapshot["accountObservedAt"] for snapshot in snapshots] == [
+        None,
+        "2026-07-20T00:00:00Z",
+        "2026-07-20T00:00:00Z",
+        "2026-07-20T00:00:02Z",
+    ]
+    assert snapshots[2]["account"]["floatingPnl"] == 0.0
+    assert snapshots[2]["account"]["openPositions"] == 0
 
 
 def test_dashboard_read_state_rejects_invalid_connection_state() -> None:

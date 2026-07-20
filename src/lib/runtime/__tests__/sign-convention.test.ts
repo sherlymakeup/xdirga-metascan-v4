@@ -5,6 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 import { buildSnapshot, getAllFixtureTrades } from "@/lib/demo/scenarios";
+import { marketPulse } from "@/routes/markets";
 
 describe("sign convention: net = gross + commission + swap", () => {
   it("holds on every open position (floatingPnl + commission + swap = netPnl)", () => {
@@ -30,5 +31,25 @@ describe("sign convention: net = gross + commission + swap", () => {
     for (const t of trades) {
       expect(t.commission).toBeLessThanOrEqual(0);
     }
+  });
+});
+
+describe("market change availability", () => {
+  it("excludes null changes from direction and breadth", () => {
+    const snap = buildSnapshot("healthy");
+    const fx = marketPulse(snap.markets).find((item) => item.group === "FX")!;
+
+    expect(snap.markets.some((market) => market.changePct === null)).toBe(true);
+    expect(fx.observed).toBe(fx.up + fx.down);
+    expect(fx.observed).toBeLessThan(fx.total);
+    expect(fx.breadthPct).toBe((fx.up / fx.observed) * 100);
+  });
+
+  it("uses deterministic fixture provenance", () => {
+    const first = buildSnapshot("healthy");
+    const second = buildSnapshot("healthy");
+
+    expect(first.positionsObservedAt).toBe(second.positionsObservedAt);
+    expect(first.accountObservedAt).toBe(second.accountObservedAt);
   });
 });
