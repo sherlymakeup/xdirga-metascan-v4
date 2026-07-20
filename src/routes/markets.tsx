@@ -91,8 +91,10 @@ function MarketsPage() {
     const groups: MarketSymbol["group"][] = ["FX", "METALS", "INDICES", "CRYPTO"];
     return groups.map((g) => {
       const list = snap.markets.filter((m) => m.group === g);
-      const up = list.filter((m) => m.changePct >= 0).length;
-      const avg = list.length ? list.reduce((s, m) => s + m.changePct, 0) / list.length : 0;
+       const observed = list.filter((m) => m.changePct != null);
+       const up = observed.filter((m) => m.changePct! >= 0).length;
+       const avg = observed.length ? observed.reduce((s, m) => s + m.changePct!, 0) / observed.length : null;
+
       const stale = list.filter((m) => m.freshness !== "FRESH").length;
       return { group: g, total: list.length, up, down: list.length - up, avg, stale };
     });
@@ -117,8 +119,9 @@ function MarketsPage() {
       {/* Market pulse strip */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {pulse.map((p) => {
-          const up = p.avg >= 0;
-          const breadthPct = p.total ? (p.up / p.total) * 100 : 0;
+           const up = p.avg != null && p.avg >= 0;
+           const breadthPct = p.total ? (p.up / p.total) * 100 : 0;
+
           return (
             <button
               key={p.group}
@@ -213,8 +216,8 @@ function MarketsPage() {
               </thead>
               <tbody>
                 {filtered.map((m) => {
-                  const pts = seededSpark(m.symbol, m.last, m.changePct);
-                  const up = m.changePct >= 0;
+                  const pts = m.changePct == null ? null : seededSpark(m.symbol, m.last, m.changePct);
+                  const up = m.changePct != null && m.changePct >= 0;
                   const isSel = selected?.symbol === m.symbol;
                   const isFav = favs.has(m.symbol);
                   return (
@@ -260,12 +263,12 @@ function MarketsPage() {
                       <td className={cn("num px-2 py-1.5 text-right font-medium", up ? "text-profit" : "text-loss")}>
                         <span className="inline-flex items-center gap-0.5">
                           {up ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />}
-                          {fmtPct(Math.abs(m.changePct), 2)}
+                          {fmtPct(m.changePct == null ? null : Math.abs(m.changePct), 2)}
                         </span>
                       </td>
                       <td className="px-2 py-1.5">
                         <div className="flex justify-center">
-                          <Sparkline pts={pts} up={up} />
+                          {pts ? <Sparkline pts={pts} up={up} /> : "—"}
                         </div>
                       </td>
                       <td className="px-2 py-1.5">
@@ -354,6 +357,7 @@ function SortTh({
 }
 
 function ChartMock({ symbol, tf }: { symbol: MarketSymbol; tf: string }) {
+  if (symbol.changePct == null) return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">N/A</div>;
   const pts = seededSpark(symbol.symbol + tf, symbol.last, symbol.changePct);
   const min = Math.min(...pts);
   const max = Math.max(...pts);
@@ -396,7 +400,7 @@ function ChartMock({ symbol, tf }: { symbol: MarketSymbol; tf: string }) {
 }
 
 function SymbolDetail({ symbol }: { symbol: MarketSymbol }) {
-  const up = symbol.changePct >= 0;
+  const up = symbol.changePct != null && symbol.changePct >= 0;
   const pip = pipValue(symbol);
   const spreadPips = symbol.spread * pip;
   const rows: Array<[string, string]> = [

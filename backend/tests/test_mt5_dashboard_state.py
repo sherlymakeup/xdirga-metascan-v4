@@ -9,10 +9,10 @@ import pytest
 
 from metascan.bus.event_bus import EventBus
 from metascan.journal.db import Journal
-from metascan.mt5.consumer import BrokerStateConsumer
+from metascan.mt5.consumer import BrokerStateConsumer, _envelope
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
-from metascan.mt5.types import AccountRow, BrokerStateFrame, DashboardReadState, PositionRow, SymbolMeta, TickRow
+from metascan.mt5.types import AccountRow, BrokerStateFrame, ConsumerFrameState, DashboardReadState, PositionRow, SymbolMeta, TickRow
 
 
 def test_dashboard_read_state_is_frozen_and_copies_collections() -> None:
@@ -64,24 +64,26 @@ def test_consumer_dashboard_state_copies_retained_read_model() -> None:
     metrics.record_cycle_ms(12.5)
     consumer = object.__new__(BrokerStateConsumer)
     consumer._metrics = metrics
-    consumer.connection_state = "DEGRADED"
-    consumer.last_account = None
-    consumer.last_positions = {}
-    consumer.dashboard_positions = ()
-    consumer.last_ticks = {}
-    consumer.last_symbol_meta = {}
-    consumer._bot_magic = 240101
-    consumer._tick_age_budget_ms = 1000.0
-    consumer.last_frame_id = 9
-    consumer.last_frame_at = "2026-07-20T00:00:00Z"
-    consumer._dashboard_state_slot = [DashboardReadState(
+    dashboard = DashboardReadState(
         connection_state="DEGRADED", account=None, positions=(), ticks={}, symbol_meta={},
         bot_magic=240101, tick_age_budget_ms=1000.0, last_frame_id=9,
         last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=12.5,
+    )
+    consumer._frame_state_slot = [ConsumerFrameState(
+        connection_state="DEGRADED", quarantine_tickets=frozenset(), hard_fail_streak=0,
+        last_tick_mono={}, last_tick_msc={}, degrade_reasons=frozenset(),
+        last_positions={}, dashboard=dashboard,
     )]
 
     state = consumer.dashboard_state()
-    consumer.last_frame_id = 10
+    consumer._frame_state_slot[0] = ConsumerFrameState(
+        connection_state="DEGRADED", quarantine_tickets=frozenset(), hard_fail_streak=0,
+        last_tick_mono={}, last_tick_msc={}, degrade_reasons=frozenset(),
+        last_positions={}, dashboard=dashboard.with_frame(
+            connection_state="DEGRADED", account=None, ticks={}, symbol_meta={}, last_frame_id=10,
+            last_frame_at="2026-07-20T00:00:01Z", poll_latency_ms=12.5, positions=(),
+        ),
+    )
 
     assert state.connection_state == "DEGRADED"
     assert state.last_frame_id == 9
@@ -95,20 +97,15 @@ def test_consumer_dashboard_state_retains_all_positions_and_symbol_metadata() ->
     meta = SymbolMeta("XAUUSD", "XAUUSDm", 2, 0.01, 100.0, 0.01, 1.0, 0.01, 10.0, 0.01, 0, 0, 3, 4, True)
     consumer = object.__new__(BrokerStateConsumer)
     consumer._metrics = GatewayMetrics()
-    consumer._bot_magic = 240101
-    consumer._tick_age_budget_ms = 1000.0
-    consumer.connection_state = "CONNECTED"
-    consumer.last_account = None
-    consumer.last_positions = {managed.ticket: managed}
-    consumer.dashboard_positions = (managed, foreign)
-    consumer.last_ticks = {}
-    consumer.last_symbol_meta = {meta.resolved: meta}
-    consumer.last_frame_id = 1
-    consumer.last_frame_at = "2026-07-20T00:00:00Z"
-    consumer._dashboard_state_slot = [DashboardReadState(
+    dashboard = DashboardReadState(
         connection_state="CONNECTED", account=None, positions=(managed, foreign), ticks={},
         symbol_meta={meta.resolved: meta}, bot_magic=240101, tick_age_budget_ms=1000.0,
         last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=None,
+    )
+    consumer._frame_state_slot = [ConsumerFrameState(
+        connection_state="CONNECTED", quarantine_tickets=frozenset({foreign.ticket}), hard_fail_streak=0,
+        last_tick_mono={}, last_tick_msc={}, degrade_reasons=frozenset({"ALIEN_POSITION"}),
+        last_positions={managed.ticket: managed}, dashboard=dashboard,
     )]
 
     state = consumer.dashboard_state()
@@ -136,6 +133,24 @@ def test_cold_start_and_authoritative_flat_have_distinct_availability() -> None:
 
     assert (cold.positions_available, cold.positions_frame_id, cold.positions_observed_at) == (False, 0, None)
     assert (flat.positions_available, flat.positions_frame_id, flat.positions_observed_at) == (True, 1, "2026-07-20T00:00:00Z")
+
+
+def test_account_availability_retains_provenance_until_recovery() -> None:
+    account1 = AccountRow(1, 100.0, 101.0, 1.0, 100.0, 101.0, "USD", 0, 0)
+    account2 = AccountRow(1, 200.0, 201.0, 2.0, 199.0, 100.5, "USD", 0, 0)
+    cold = DashboardReadState(
+        connection_state="DISCONNECTED", account=None, positions=(), ticks={}, symbol_meta={},
+        bot_magic=1, tick_age_budget_ms=1000.0, last_frame_id=0, last_frame_at=None,
+        poll_latency_ms=None, positions_available=False,
+    )
+    success = cold.with_frame(connection_state="CONNECTED", account=account1, ticks={}, symbol_meta={}, last_frame_id=1, last_frame_at="2026-07-20T00:00:00Z", poll_latency_ms=1.0, positions=())
+    failed = success.with_frame(connection_state="DEGRADED", account=None, ticks={}, symbol_meta={}, last_frame_id=2, last_frame_at="2026-07-20T00:00:01Z", poll_latency_ms=1.0, positions=())
+    recovered = failed.with_frame(connection_state="CONNECTED", account=account2, ticks={}, symbol_meta={}, last_frame_id=3, last_frame_at="2026-07-20T00:00:02Z", poll_latency_ms=1.0, positions=())
+
+    assert (cold.account_available, cold.account_frame_id, cold.account_observed_at) == (False, None, None)
+    assert (success.account, success.account_available, success.account_frame_id) == (account1, True, 1)
+    assert (failed.account, failed.account_available, failed.account_frame_id, failed.account_observed_at) == (account1, False, 1, "2026-07-20T00:00:00Z")
+    assert (recovered.account, recovered.account_available, recovered.account_frame_id) == (account2, True, 3)
 
 
 def test_unavailable_positions_keep_original_provenance() -> None:
@@ -207,6 +222,132 @@ async def test_consumer_batch_never_exposes_new_cursor_with_old_state(tmp_path: 
     assert state.last_frame_id == 1
     assert revision == sequence == len(published)
     assert delivered.sequence == 1
+    await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_batch_cancellation_finishes_commit_state_and_fanout(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "cancel.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    subscriber = await bus.subscribe("cancel-test")
+    slot = ["old"]
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    original = journal.append_events_committed
+    loop = asyncio.get_running_loop()
+
+    def blocked(envelopes):
+        loop.call_soon_threadsafe(entered.set)
+        asyncio.run_coroutine_threadsafe(release.wait(), loop).result()
+        original(envelopes)
+
+    journal.append_events_committed = blocked
+    event = _envelope(type_="runtime.health.changed", runtime_id="rt", wall_iso="2026-07-20T00:00:00Z", payload={})
+    task = asyncio.create_task(bus.publish_state_batch(slot, "new", (event,)))
+    await entered.wait()
+    task.cancel()
+    release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+    delivered = await subscriber.get()
+    assert slot[0] == "new"
+    assert delivered.sequence == bus.sequence == 1
+    await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_connection_transition_is_reemitted_after_journal_failure(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "connection-retry.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    metrics = GatewayMetrics()
+    consumer = BrokerStateConsumer(
+        bus=bus,
+        slot=LatestFrameSlot(metrics),
+        metrics=metrics,
+        bot_magic=240101,
+        runtime_id="rt",
+    )
+    frame = BrokerStateFrame(
+        frame_id=1, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:00Z", positions=(), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    original = journal.append_events_committed
+    attempts = 0
+
+    def fail_once(envelopes):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("journal unavailable")
+        original(envelopes)
+
+    journal.append_events_committed = fail_once
+
+    failed = await consumer.process_frame(frame)
+    assert [event.type for event in failed] == ["broker.connection.changed", "runtime.health.changed"]
+    assert journal.read_events(bus.boot_id, 0, 100) == []
+    assert consumer.connection_state == "DISCONNECTED"
+    assert consumer.dashboard_state().last_frame_id == 0
+
+    published = await consumer.process_frame(frame)
+
+    assert [event.type for event in published] == ["broker.connection.changed", "runtime.health.changed"]
+    assert consumer.connection_state == "CONNECTED"
+    assert consumer.dashboard_state().last_frame_id == 1
+    await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_position_lifecycle_is_reemitted_after_journal_failure(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "position-retry.sqlite")
+    bus = EventBus(journal)
+    await bus.start()
+    metrics = GatewayMetrics()
+    consumer = BrokerStateConsumer(
+        bus=bus,
+        slot=LatestFrameSlot(metrics),
+        metrics=metrics,
+        bot_magic=240101,
+        runtime_id="rt",
+    )
+    empty = BrokerStateFrame(
+        frame_id=1, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:00Z", positions=(), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    await consumer.process_frame(empty)
+    opened = BrokerStateFrame(
+        frame_id=2, cycle_started_m=0.0, cycle_finished_m=0.01, cycle_duration_ms=10.0,
+        polled_at_wall="2026-07-20T00:00:01Z", positions=(_position(ticket=7, magic=240101),), account=None,
+        ticks=MappingProxyType({}), symbol_meta=MappingProxyType({}), errors=(), mt5_last_error=None,
+    )
+    original = journal.append_events_committed
+    attempts = 0
+
+    def fail_once(envelopes):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("journal unavailable")
+        original(envelopes)
+
+    journal.append_events_committed = fail_once
+
+    failed = await consumer.process_frame(opened)
+    assert [event.type for event in failed] == ["position.opened"]
+    assert not any(event.type == "position.opened" for event in journal.read_events(bus.boot_id, 0, 100))
+    assert consumer.last_positions == {}
+    assert consumer.dashboard_state().last_frame_id == 1
+
+    published = await consumer.process_frame(opened)
+
+    assert [event.type for event in published] == ["position.opened"]
+    assert consumer.last_positions == {7: opened.positions[0]}
+    assert consumer.dashboard_state().last_frame_id == 2
     await bus.close()
 
 

@@ -119,7 +119,7 @@ class DashboardReadState:
     ) -> DashboardReadState:
         return DashboardReadState(
             connection_state=connection_state,
-            account=account,
+            account=self.account if account is None else account,
             positions=self.positions if positions is None else positions,
             ticks=ticks,
             symbol_meta=symbol_meta,
@@ -135,6 +135,24 @@ class DashboardReadState:
             account_frame_id=self.account_frame_id,
             account_observed_at=self.account_observed_at,
         )
+
+
+@dataclass(frozen=True, slots=True)
+class ConsumerFrameState:
+    connection_state: Literal["CONNECTED", "DISCONNECTED", "DEGRADED"]
+    quarantine_tickets: frozenset[int]
+    hard_fail_streak: int
+    last_tick_mono: Mapping[str, float]
+    last_tick_msc: Mapping[str, int]
+    degrade_reasons: frozenset[str]
+    last_positions: Mapping[int, PositionRow]
+    dashboard: DashboardReadState
+    pending_clears: frozenset[int] = frozenset()
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "last_tick_mono", MappingProxyType(dict(self.last_tick_mono)))
+        object.__setattr__(self, "last_tick_msc", MappingProxyType(dict(self.last_tick_msc)))
+        object.__setattr__(self, "last_positions", MappingProxyType(dict(self.last_positions)))
 
 
 @dataclass(frozen=True, slots=True)

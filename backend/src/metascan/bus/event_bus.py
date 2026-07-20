@@ -275,18 +275,32 @@ class EventBus:
                 item, _, _ = self._stamp(envelope, mutates_state=True)
                 stamped.append(item)
             loop = asyncio.get_running_loop()
+            commit = loop.run_in_executor(
+                self._journal.executor,
+                self._journal.append_events_committed,
+                tuple(stamped),
+            )
+            cancellation: asyncio.CancelledError | None = None
             try:
-                await loop.run_in_executor(
-                    self._journal.executor,
-                    self._journal.append_events_committed,
-                    tuple(stamped),
-                )
+                await asyncio.shield(commit)
+            except asyncio.CancelledError as exc:
+                cancellation = exc
+                task = asyncio.current_task()
+                if task is not None:
+                    task.uncancel()
+                try:
+                    await asyncio.shield(commit)
+                except Exception:
+                    self._restore(previous_sequence, previous_revision)
+                    raise
             except Exception:
                 self._restore(previous_sequence, previous_revision)
                 raise
             state_slot[0] = state
             for item in stamped:
                 self._fanout(item)
+            if cancellation is not None:
+                raise cancellation
             return tuple(stamped)
 
     async def publish(

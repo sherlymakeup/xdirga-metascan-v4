@@ -55,8 +55,8 @@ export interface BrokerConnectionView {
   accountType?: BrokerEnvironment;
   tradingPermission?: boolean;
   terminalConnected?: boolean;
-  lastHeartbeatAt?: string;
-  lastSuccessfulRequestAt?: string;
+  lastHeartbeatAt?: string | null;
+  lastSuccessfulRequestAt?: string | null;
   latencyMs?: number;
   reconnectAttempts?: number;
   errorCode?: string;
@@ -85,8 +85,8 @@ export interface BrokerEnvironmentViewModel {
   tradingPermissionEnabled?: boolean;
 
   dataFreshness?: string;
-  lastBrokerHeartbeatAt?: string;
-  lastBrokerRequestAt?: string;
+  lastBrokerHeartbeatAt?: string | null;
+  lastBrokerRequestAt?: string | null;
 
   warning?: string;
 }

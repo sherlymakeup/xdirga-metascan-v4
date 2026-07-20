@@ -12,6 +12,7 @@ class PendingIntentLookup(Protocol):
     def get_command_id(self, ticket: int) -> str | None: ...
     def get_correlation_id(self, ticket: int) -> str | None: ...
     def clear(self, ticket: int) -> None: ...
+    def install_clears(self, tickets: frozenset[int]) -> None: ...
 
 
 class NullPendingIntentLookup:
@@ -34,4 +35,7 @@ class NullPendingIntentLookup:
         return None
 
     def clear(self, ticket: int) -> None:
+        pass
+
+    def install_clears(self, tickets: frozenset[int]) -> None:
         pass

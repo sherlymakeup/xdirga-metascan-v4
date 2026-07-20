@@ -3,7 +3,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid
-from typing import Any
+from dataclasses import replace
+from typing import Any, Mapping
 
 from metascan.bus.event_bus import EventBus
 from metascan.contract.models import RuntimeEventEnvelope
@@ -11,7 +12,7 @@ from metascan.mt5.clocks import MonotonicClock, WallClock, SystemMonotonicClock,
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
 from metascan.mt5.pending_intent import PendingIntentLookup, NullPendingIntentLookup
-from metascan.mt5.types import AccountRow, BrokerStateFrame, DashboardReadState, PositionRow, TickRow
+from metascan.mt5.types import AccountRow, BrokerStateFrame, ConsumerFrameState, DashboardReadState, PositionRow, TickRow
 from metascan.mt5.mapping import position_id_for, position_payload, closed_trade_payload, protection_for, sl_or_none, tp_or_none
 
 logger = logging.getLogger("metascan.mt5.consumer")
@@ -74,19 +75,6 @@ class BrokerStateConsumer:
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
-        self.last_positions: dict[int, PositionRow] = {}
-        self.last_account: AccountRow | None = None
-        self.last_ticks: dict[str, TickRow] = {}
-        self.last_symbol_meta: dict[str, Any] = {}
-        self.dashboard_positions: tuple[PositionRow, ...] = ()
-        self.last_frame_id: int = 0
-        self.last_frame_at: str | None = None
-        self.connection_state: str = "DISCONNECTED"
-        self.quarantine_tickets: set[int] = set()
-        self._hard_fail_streak: int = 0
-        self._last_tick_mono: dict[str, float] = {}
-        self._last_tick_msc: dict[str, int] = {}
-        self._degrade_reasons: set[str] = set()
         self._last_frame_mono: float = self._mono.monotonic()
         initial_dashboard_state = DashboardReadState(
             connection_state="DISCONNECTED",
@@ -101,14 +89,79 @@ class BrokerStateConsumer:
             poll_latency_ms=None,
             positions_available=False,
         )
-        self._dashboard_state_slot = [initial_dashboard_state]
+        self._frame_state_slot = [ConsumerFrameState(
+            connection_state="DISCONNECTED",
+            quarantine_tickets=frozenset(),
+            hard_fail_streak=0,
+            last_tick_mono={},
+            last_tick_msc={},
+            degrade_reasons=frozenset(),
+            last_positions={},
+            dashboard=initial_dashboard_state,
+        )]
+
+    @property
+    def _frame_state(self) -> ConsumerFrameState:
+        return self._frame_state_slot[0]
+
+    @property
+    def connection_state(self) -> str:
+        return self._frame_state.connection_state
+
+    @property
+    def quarantine_tickets(self) -> frozenset[int]:
+        return self._frame_state.quarantine_tickets
+
+    @property
+    def _hard_fail_streak(self) -> int:
+        return self._frame_state.hard_fail_streak
+
+    @property
+    def _last_tick_mono(self) -> Mapping[str, float]:
+        return self._frame_state.last_tick_mono
+
+    @property
+    def _last_tick_msc(self) -> Mapping[str, int]:
+        return self._frame_state.last_tick_msc
+
+    @property
+    def _degrade_reasons(self) -> frozenset[str]:
+        return self._frame_state.degrade_reasons
+
+    @property
+    def last_positions(self) -> Mapping[int, PositionRow]:
+        return self._frame_state.last_positions
+
+    @property
+    def last_account(self) -> AccountRow | None:
+        return self._frame_state.dashboard.account
+
+    @property
+    def last_ticks(self) -> Mapping[str, TickRow]:
+        return self._frame_state.dashboard.ticks
+
+    @property
+    def last_symbol_meta(self) -> Mapping[str, Any]:
+        return self._frame_state.dashboard.symbol_meta
+
+    @property
+    def dashboard_positions(self) -> tuple[PositionRow, ...]:
+        return self._frame_state.dashboard.positions
+
+    @property
+    def last_frame_id(self) -> int:
+        return self._frame_state.dashboard.last_frame_id
+
+    @property
+    def last_frame_at(self) -> str | None:
+        return self._frame_state.dashboard.last_frame_at
 
     def dashboard_state(self) -> DashboardReadState:
-        return self._dashboard_state_slot[0]
+        return self._frame_state.dashboard
 
-    def _build_dashboard_frame(self, frame: BrokerStateFrame) -> DashboardReadState:
+    def _build_dashboard_frame(self, frame: BrokerStateFrame, connection_state: str) -> DashboardReadState:
         return self.dashboard_state().with_frame(
-            connection_state=self.connection_state,
+            connection_state=connection_state,
             account=frame.account,
             ticks=frame.ticks,
             symbol_meta=frame.symbol_meta,
@@ -155,10 +208,9 @@ class BrokerStateConsumer:
                 logger.exception("Error in consumer loop")
 
     async def _handle_heartbeat_timeout(self) -> None:
-        self._degrade_reasons.add("HARD_FAIL")
+        reasons = self._degrade_reasons | {"HARD_FAIL"}
         if self.connection_state != "DISCONNECTED":
             prev_state = self.connection_state
-            self.connection_state = "DISCONNECTED"
             wall = self._wall.now_iso()
             env_conn = _envelope(
                 type_="broker.connection.changed",
@@ -167,11 +219,9 @@ class BrokerStateConsumer:
                 payload={
                     "state": "DISCONNECTED",
                     "previousState": prev_state,
-                    "reasons": sorted(list(self._degrade_reasons)),
+                    "reasons": sorted(reasons),
                 },
             )
-            await self._bus.publish(env_conn, mutates_state=True)
-
             env_health = _envelope(
                 type_="runtime.health.changed",
                 runtime_id=self._runtime_id,
@@ -179,29 +229,43 @@ class BrokerStateConsumer:
                 payload={
                     "subsystem": "mt5-gateway",
                     "state": "DOWN",
-                    "reasons": sorted(list(self._degrade_reasons)),
+                    "reasons": sorted(reasons),
                 },
             )
-            await self._bus.publish(env_health, mutates_state=True)
+            candidate = replace(
+                self._frame_state,
+                connection_state="DISCONNECTED",
+                degrade_reasons=frozenset(reasons),
+                dashboard=replace(self.dashboard_state(), connection_state="DISCONNECTED"),
+            )
+            await self._bus.publish_state_batch(self._frame_state_slot, candidate, (env_conn, env_health))
+        elif reasons != self._degrade_reasons:
+            candidate = replace(self._frame_state, degrade_reasons=frozenset(reasons))
+            await self._bus.publish_state_batch(self._frame_state_slot, candidate, ())
 
     async def process_frame(self, frame: BrokerStateFrame) -> list[RuntimeEventEnvelope]:
         published: list[RuntimeEventEnvelope] = []
         try:
+            previous = self._frame_state
+            last_tick_mono = dict(previous.last_tick_mono)
+            last_tick_msc = dict(previous.last_tick_msc)
+            last_positions = dict(previous.last_positions)
+            pending_clears: set[int] = set()
             now_m = self._mono.monotonic()
             for sym, tick in frame.ticks.items():
-                prev_msc = self._last_tick_msc.get(sym)
+                prev_msc = last_tick_msc.get(sym)
                 if prev_msc is not None and tick.time_msc > prev_msc:
-                    self._last_tick_mono[sym] = now_m
-                    self._last_tick_msc[sym] = tick.time_msc
-                elif sym not in self._last_tick_msc:
-                    self._last_tick_mono[sym] = now_m
-                    self._last_tick_msc[sym] = tick.time_msc
+                    last_tick_mono[sym] = now_m
+                    last_tick_msc[sym] = tick.time_msc
+                elif sym not in last_tick_msc:
+                    last_tick_mono[sym] = now_m
+                    last_tick_msc[sym] = tick.time_msc
 
             # ponytail: tick budget assumes active trading session configured; SP7/config session calendars provide backstop reconciliation.
             # Check ticks age
             tick_age_degrade = False
             for sym in frame.ticks:
-                last_mono = self._last_tick_mono.get(sym)
+                last_mono = last_tick_mono.get(sym)
                 if last_mono is not None:
                     if (now_m - last_mono) * 1000.0 > self._tick_age_budget_ms:
                         tick_age_degrade = True
@@ -237,33 +301,25 @@ class BrokerStateConsumer:
                         severity="CRITICAL",
                     )
                     published.append(env)
-            self.quarantine_tickets = new_q
             if new_q:
                 reasons.add("ALIEN_POSITION")
 
-            # Determine fail/error state
             is_failed = frame.positions_unavailable or any(e.call == "account_info" for e in frame.errors)
-            if is_failed:
-                self._hard_fail_streak += 1
-            else:
-                self._hard_fail_streak = 0
+            hard_fail_streak = previous.hard_fail_streak + 1 if is_failed else 0
 
-            if self._hard_fail_streak >= self._hard_fail_threshold:
+            if hard_fail_streak >= self._hard_fail_threshold:
                 reasons.add("HARD_FAIL")
                 new_state = "DISCONNECTED"
             else:
-                if self._hard_fail_streak > 0 or frame.errors:
+                if hard_fail_streak > 0 or frame.errors:
                     reasons.add("SOFT_ERROR")
                 if reasons:
                     new_state = "DEGRADED"
                 else:
                     new_state = "CONNECTED"
 
-            self._degrade_reasons = reasons
-
-            if new_state != self.connection_state:
-                prev_state = self.connection_state
-                self.connection_state = new_state
+            if new_state != previous.connection_state:
+                prev_state = previous.connection_state
                 env_conn = _envelope(
                     type_="broker.connection.changed",
                     runtime_id=self._runtime_id,
@@ -290,18 +346,25 @@ class BrokerStateConsumer:
                 published.append(env_health)
 
             if frame.positions_unavailable:
-                self.last_frame_id = frame.frame_id
-                self.last_frame_at = frame.polled_at_wall
-                state = self._build_dashboard_frame(frame)
-                return list(await self._bus.publish_state_batch(self._dashboard_state_slot, state, tuple(published)))
+                dashboard = self._build_dashboard_frame(frame, new_state)
+                candidate = ConsumerFrameState(
+                    connection_state=new_state,
+                    quarantine_tickets=frozenset(new_q),
+                    hard_fail_streak=hard_fail_streak,
+                    last_tick_mono=last_tick_mono,
+                    last_tick_msc=last_tick_msc,
+                    degrade_reasons=frozenset(reasons),
+                    last_positions=last_positions,
+                    dashboard=dashboard,
+                )
+                return list(await self._bus.publish_state_batch(self._frame_state_slot, candidate, tuple(published)))
 
-            self.dashboard_positions = frame.positions
             managed = {p.ticket: p for p in frame.positions if p.magic == self._bot_magic}
 
             # Closes
-            for ticket in list(self.last_positions.keys()):
+            for ticket in list(last_positions.keys()):
                 if ticket not in managed:
-                    old = self.last_positions[ticket]
+                    old = last_positions[ticket]
                     exit_reason = self._pending.get_exit_reason(ticket)
                     cmd_id = self._pending.get_command_id(ticket)
                     corr_id = self._pending.get_correlation_id(ticket)
@@ -330,12 +393,12 @@ class BrokerStateConsumer:
                         env_t = env_t.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
                     published.append(env_t)
 
-                    self._pending.clear(ticket)
-                    del self.last_positions[ticket]
+                    pending_clears.add(ticket)
+                    del last_positions[ticket]
 
             # Opens + updates
             for ticket, new in managed.items():
-                if ticket not in self.last_positions:
+                if ticket not in last_positions:
                     env_o = _envelope(
                         type_="position.opened",
                         runtime_id=self._runtime_id,
@@ -344,10 +407,10 @@ class BrokerStateConsumer:
                         position_id=position_id_for(ticket),
                     )
                     published.append(env_o)
-                    self.last_positions[ticket] = new
+                    last_positions[ticket] = new
                     continue
 
-                old = self.last_positions[ticket]
+                old = last_positions[ticket]
                 # Check for volume shrink
                 if new.volume < old.volume - 1e-12:
                     matched = self._pending.has_pending_partial(ticket, new.volume)
@@ -379,8 +442,8 @@ class BrokerStateConsumer:
                         env_up = env_up.model_copy(update=metadata)
                     published.extend((env_pc, env_up))
                     if matched:
-                        self._pending.clear(ticket)
-                    self.last_positions[ticket] = new
+                        pending_clears.add(ticket)
+                    last_positions[ticket] = new
                     continue
 
                 # Check for protection changed
@@ -411,7 +474,7 @@ class BrokerStateConsumer:
                             position_id=position_id_for(ticket),
                         )
                         published.append(env_up)
-                    self.last_positions[ticket] = new
+                    last_positions[ticket] = new
                     continue
 
                 # Check for MTM or other changes
@@ -426,15 +489,27 @@ class BrokerStateConsumer:
                         position_id=position_id_for(ticket),
                     )
                     published.append(env_up)
-                self.last_positions[ticket] = new
+                last_positions[ticket] = new
 
-            self.last_account = frame.account
-            self.last_ticks = dict(frame.ticks)
-            self.last_symbol_meta = dict(frame.symbol_meta)
-            self.last_frame_id = frame.frame_id
-            self.last_frame_at = frame.polled_at_wall
-            state = self._build_dashboard_frame(frame)
-            published = list(await self._bus.publish_state_batch(self._dashboard_state_slot, state, tuple(published)))
+            dashboard = self._build_dashboard_frame(frame, new_state)
+            candidate = ConsumerFrameState(
+                connection_state=new_state,
+                quarantine_tickets=frozenset(new_q),
+                hard_fail_streak=hard_fail_streak,
+                last_tick_mono=last_tick_mono,
+                last_tick_msc=last_tick_msc,
+                degrade_reasons=frozenset(reasons),
+                last_positions=last_positions,
+                dashboard=dashboard,
+                pending_clears=frozenset(pending_clears),
+            )
+            published = list(await self._bus.publish_state_batch(self._frame_state_slot, candidate, tuple(published)))
+            install_clears = getattr(self._pending, "install_clears", None)
+            if install_clears is not None:
+                install_clears(candidate.pending_clears)
+            else:
+                for ticket in candidate.pending_clears:
+                    self._pending.clear(ticket)
         except Exception:
             logger.exception("diff failed frame_id=%s", frame.frame_id)
         return published

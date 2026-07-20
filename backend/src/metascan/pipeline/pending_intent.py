@@ -49,6 +49,10 @@ class PendingIntentRegistry:
         self._intents.pop(ticket, None)
         self._retained.discard(ticket)
 
+    def install_clears(self, tickets: frozenset[int]) -> None:
+        self._intents = {ticket: intent for ticket, intent in self._intents.items() if ticket not in tickets}
+        self._retained = self._retained.difference(tickets)
+
     def clear_entry(self, symbol: str) -> None:
         self._entries.pop(symbol, None)
         self._entry_tickets.pop(symbol, None)

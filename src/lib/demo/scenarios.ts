@@ -188,6 +188,10 @@ const POSITIONS: Position[] = [
   {
     id: "pos_01HXDRG5A",
     brokerTicket: "884120391",
+    ownership: "BOT_MANAGED",
+    dataAvailable: true,
+    sourceFrameId: 1,
+    observedAt: iso(-4),
     symbol: "EURUSD",
     side: "BUY",
     volume: 0.5,
@@ -258,6 +262,10 @@ const POSITIONS: Position[] = [
   {
     id: "pos_01HXDRG5B",
     brokerTicket: "884120442",
+    ownership: "BOT_MANAGED",
+    dataAvailable: true,
+    sourceFrameId: 1,
+    observedAt: iso(-4),
     symbol: "GBPUSD",
     side: "BUY",
     volume: 0.3,
@@ -319,6 +327,10 @@ const POSITIONS: Position[] = [
   {
     id: "pos_01HXDRG5C",
     brokerTicket: "884120510",
+    ownership: "UNKNOWN",
+    dataAvailable: true,
+    sourceFrameId: 1,
+    observedAt: iso(-4),
     symbol: "XAUUSD",
     side: "SELL",
     volume: 0.1,
@@ -752,6 +764,12 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
   }
 
   return {
+    positionsAvailable: true,
+    positionsSourceFrameId: 1,
+    positionsObservedAt: new Date().toISOString(),
+    accountAvailable: true,
+    accountSourceFrameId: 1,
+    accountObservedAt: new Date().toISOString(),
     runtime,
     subsystems,
     broker,
@@ -862,6 +880,12 @@ export function getAllFixtureTrades(): ClosedTrade[] {
 export function createEmptySnapshot(): CockpitSnapshot {
   const t = new Date().toISOString();
   return {
+    positionsAvailable: false,
+    positionsSourceFrameId: null,
+    positionsObservedAt: null,
+    accountAvailable: false,
+    accountSourceFrameId: null,
+    accountObservedAt: null,
     runtime: {
       id: "rt_disconnected",
       sessionId: "",
@@ -892,7 +916,7 @@ export function createEmptySnapshot(): CockpitSnapshot {
       connection: "DISCONNECTED",
       tradingPermitted: false,
       terminalVersion: "—",
-      lastTickAt: t,
+      lastTickAt: null,
       lastRequestAt: t,
       queueDepth: 0,
       avgLatencyMs: 0,

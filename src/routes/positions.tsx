@@ -136,7 +136,7 @@ function PositionRow({ p }: { p: Position }) {
         <AutopilotCell p={p} />
       </td>
       <td className="num px-2 py-1.5 text-right">
-        {fmtMoney(p.riskAmount)} <span className="text-muted-foreground">({fmtPct(p.riskPct)})</span>
+        {p.riskAmount == null ? "—" : fmtMoney(p.riskAmount)} <span className="text-muted-foreground">({fmtPct(p.riskPct)})</span>
       </td>
       <td className={`num px-2 py-1.5 text-right ${p.floatingPnl >= 0 ? "text-profit" : "text-loss"}`}>
         {fmtMoney(p.floatingPnl)}
@@ -146,7 +146,7 @@ function PositionRow({ p }: { p: Position }) {
       </td>
       <td className="num px-2 py-1.5 text-right">{fmtNum(p.rMultiple, 2)}R</td>
       <td className="px-2 py-1.5 text-muted-foreground">{p.strategy}</td>
-      <td className="num px-2 py-1.5 text-muted-foreground">{relativeTime(p.openedAt)}</td>
+      <td className="num px-2 py-1.5 text-muted-foreground">{p.openedAt ? relativeTime(p.openedAt) : "—"}</td>
       <td className="px-2 py-1.5 text-right">
         <div className="flex justify-end gap-1">
           {p.management && (
