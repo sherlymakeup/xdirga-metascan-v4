@@ -51,9 +51,9 @@ export interface RuntimeStatus {
   heartbeatLatencyMs: number | null;
   entriesEnabled: boolean;
   automationEnabled: boolean;
-  hostname: string;
-  os: string;
-  pid: number;
+  hostname: string | null;
+  os: string | null;
+  pid: number | null;
 }
 
 export interface SubsystemHealth {

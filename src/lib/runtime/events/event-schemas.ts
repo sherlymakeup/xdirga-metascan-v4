@@ -118,9 +118,9 @@ const cockpitSnapshotSchema = z.object({
     heartbeatLatencyMs: numberOrNull,
     entriesEnabled: z.boolean(),
     automationEnabled: z.boolean(),
-    hostname: text,
-    os: text,
-    pid: z.number(),
+    hostname: text.nullable(),
+    os: text.nullable(),
+    pid: z.number().nullable(),
   }),
   subsystems: z.array(
     z.object({

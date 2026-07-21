@@ -330,17 +330,17 @@ class RuntimeStatus(WireModel):
     trading_mode: TradingMode
     state: RuntimeState
     previous_state: RuntimeState
-    state_changed_at: str
+    state_changed_at: str | None
     state_reason: str
-    started_at: str
+    started_at: str | None
     uptime_sec: int
-    last_heartbeat_at: str
+    last_heartbeat_at: str | None
     heartbeat_latency_ms: float
     entries_enabled: bool
     automation_enabled: bool
-    hostname: str
-    os: str
-    pid: int
+    hostname: str | None
+    os: str | None
+    pid: int | None
 
 
 class SubsystemHealth(WireModel):
@@ -363,7 +363,7 @@ class BrokerStatus(WireModel):
     trading_permitted: bool
     terminal_version: str
     last_tick_at: str | None
-    last_request_at: str
+    last_request_at: str | None
     queue_depth: int
     avg_latency_ms: float
     timeout_count: int
@@ -378,18 +378,18 @@ class AccountSnapshot(WireModel):
     free_margin: float
     margin_level: float
     floating_pnl: float | None
-    realized_pnl_today: float
-    realized_pnl_week: float
-    daily_drawdown: float
-    max_drawdown: float
-    gross_exposure: float
-    net_exposure: float
+    realized_pnl_today: float | None
+    realized_pnl_week: float | None
+    daily_drawdown: float | None
+    max_drawdown: float | None
+    gross_exposure: float | None
+    net_exposure: float | None
     open_positions: int | None
-    pending_orders: int
-    trades_today: int
-    win_rate: float
-    profit_factor: float
-    risk_utilization: float
+    pending_orders: int | None
+    trades_today: int | None
+    win_rate: float | None
+    profit_factor: float | None
+    risk_utilization: float | None
     updated_at: str | None
     freshness: DataFreshness
 
@@ -502,7 +502,7 @@ class ReconciliationIssue(WireModel):
 
 class ReconciliationSummary(WireModel):
     state: Literal["IDLE", "RUNNING", "OK", "ISSUES", "FAILED"]
-    last_run_at: str
+    last_run_at: str | None
     broker_orders: int
     runtime_orders: int
     broker_positions: int

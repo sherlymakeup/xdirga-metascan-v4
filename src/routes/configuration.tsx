@@ -86,9 +86,9 @@ function ConfigPage() {
               ["Trading mode", snap.runtime.tradingMode],
               ["Automation", snap.runtime.automationEnabled ? "ENABLED" : "DISABLED"],
               ["Entries", snap.runtime.entriesEnabled ? "OPEN" : "BLOCKED"],
-              ["Hostname", snap.runtime.hostname],
-              ["OS", snap.runtime.os],
-              ["PID", String(snap.runtime.pid)],
+              ["Hostname", snap.runtime.hostname ?? "—"],
+              ["OS", snap.runtime.os ?? "—"],
+              ["PID", snap.runtime.pid == null ? "—" : String(snap.runtime.pid)],
               ["Version", `${snap.runtime.version} · ${snap.runtime.buildHash}`],
             ]}
           />

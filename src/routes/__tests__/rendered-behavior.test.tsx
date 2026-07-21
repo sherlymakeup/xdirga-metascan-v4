@@ -71,9 +71,9 @@ function emptySnapshot(): CockpitSnapshot {
       heartbeatLatencyMs: null,
       entriesEnabled: false,
       automationEnabled: false,
-      hostname: "localhost",
-      os: "win32",
-      pid: 1,
+      hostname: null,
+      os: null,
+      pid: null,
     },
     subsystems: [],
     broker: {
