@@ -10,10 +10,16 @@ from metascan.pipeline.risk_config import RiskConfig
 
 
 def get_config(request: Request) -> AppConfig:
+    config = getattr(request.app.state, "config", None)
+    if config is not None:
+        return config
     raise NotImplementedError("override in tests or wire via app state")
 
 
 def get_bus(request: Request) -> EventBus:
+    bus = getattr(request.app.state, "bus", None)
+    if bus is not None:
+        return bus
     raise NotImplementedError("override in tests or wire via app state")
 
 

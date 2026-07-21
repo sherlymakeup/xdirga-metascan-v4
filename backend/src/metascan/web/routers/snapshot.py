@@ -21,10 +21,6 @@ router = APIRouter()
 _RUNTIME_ID = "xdirga"
 
 
-def _now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z")
-
-
 def _empty_snapshot() -> dict:
     """Minimal valid CockpitSnapshot — all fields without a real source are null."""
     return {
