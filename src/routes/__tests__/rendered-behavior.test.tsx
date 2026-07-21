@@ -26,6 +26,9 @@ vi.mock("@/lib/runtime", () => ({
     requiresTypedConfirmation: false,
   }),
   useHasValidatedSnapshot: () => mockHasValidatedSnapshotRef.current,
+  useCommand: () => undefined,
+  useCommandStore: () => [],
+  useCommandCounts: () => ({ pending: 0, active: 0, completed: 0, failed: 0 }),
 }));
 
 vi.mock("@/lib/adapters/runtime", () => ({
@@ -187,6 +190,21 @@ function unacknowledgedAlert(): Alert {
   } as Alert;
 }
 
+function managedPosition(): Position {
+  return {
+    ...stalePosition(),
+    dataAvailable: true,
+  } as Position;
+}
+
+function foreignPosition(): Position {
+  return {
+    ...stalePosition(),
+    ownership: "FOREIGN",
+    dataAvailable: true,
+  } as Position;
+}
+
 function setSnapshot(snap: Partial<CockpitSnapshot>) {
   mockSnapshotRef.current = { ...emptySnapshot(), ...snap } as CockpitSnapshot;
 }
@@ -238,6 +256,28 @@ describe("rendered-behavior: positions route", () => {
       positionsAvailable: true,
       positionsObservedAt: "2026-07-15T00:00:00.000Z",
       positions: [],
+    });
+    const html = renderToStaticMarkup(<PositionsPage />);
+    expect(html).not.toContain("Close all");
+  });
+
+  it("renders Close all when in demo mode and all positions are BOT_MANAGED", () => {
+    mockModeRef.current = "fixture";
+    setSnapshot({
+      positionsAvailable: true,
+      positionsObservedAt: "2026-07-15T00:00:00.000Z",
+      positions: [managedPosition()],
+    });
+    const html = renderToStaticMarkup(<PositionsPage />);
+    expect(html).toContain("Close all");
+  });
+
+  it("does not render Close all when a foreign position is present", () => {
+    mockModeRef.current = "fixture";
+    setSnapshot({
+      positionsAvailable: true,
+      positionsObservedAt: "2026-07-15T00:00:00.000Z",
+      positions: [managedPosition(), foreignPosition()],
     });
     const html = renderToStaticMarkup(<PositionsPage />);
     expect(html).not.toContain("Close all");

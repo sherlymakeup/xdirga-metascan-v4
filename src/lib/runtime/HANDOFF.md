@@ -30,9 +30,7 @@ All adapters implement `RuntimeAdapter` (see `src/lib/runtime/runtime-adapter.ts
 `getDescriptor()` returns the truthful identity strip consumed by the UI:
 
 ```ts
-{
-  (source, mode, brokerEnvironment, connection, target);
-}
+{ source, mode, brokerEnvironment, connection, target }
 ```
 
 `connection` is one of `CONNECTED | CONNECTING | DISCONNECTED | UNAVAILABLE`.

@@ -34,7 +34,7 @@ function AnalyticsPage() {
     ["Realised PnL (week)", fmtMoney(snap.account.realizedPnlWeek)],
     ["Win rate", fmtPct(snap.account.winRate)],
     ["Profit factor", fmtNum(snap.account.profitFactor, 2)],
-    ["Trades today", String(snap.account.tradesToday)],
+    ["Trades today", fmtNum(snap.account.tradesToday, 0)],
     ["Max drawdown", fmtPct(snap.account.maxDrawdown)],
   ];
   const curve = snap.equityCurve;

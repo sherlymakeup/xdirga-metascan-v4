@@ -335,7 +335,7 @@ class RuntimeStatus(WireModel):
     started_at: str | None
     uptime_sec: int
     last_heartbeat_at: str | None
-    heartbeat_latency_ms: float
+    heartbeat_latency_ms: float | None
     entries_enabled: bool
     automation_enabled: bool
     hostname: str | None
@@ -365,18 +365,18 @@ class BrokerStatus(WireModel):
     last_tick_at: str | None
     last_request_at: str | None
     queue_depth: int
-    avg_latency_ms: float
+    avg_latency_ms: float | None
     timeout_count: int
     reconnect_attempts: int
 
 
 class AccountSnapshot(WireModel):
     currency: str
-    balance: float
-    equity: float
-    margin: float
-    free_margin: float
-    margin_level: float
+    balance: float | None
+    equity: float | None
+    margin: float | None
+    free_margin: float | None
+    margin_level: float | None
     floating_pnl: float | None
     realized_pnl_today: float | None
     realized_pnl_week: float | None

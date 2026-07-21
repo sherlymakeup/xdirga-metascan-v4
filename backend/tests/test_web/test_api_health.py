@@ -61,4 +61,5 @@ async def test_metrics_shape(async_client):
     assert "sqliteCommitLatencyMs" in d
     assert "activeSseConnections" in d
     assert isinstance(d["eventBusQueueSize"], int)
-    assert isinstance(d["mt5PollLatencyMs"], float)
+    assert d["mt5PollLatencyMs"] is None or isinstance(d["mt5PollLatencyMs"], float)
+    assert d["sqliteCommitLatencyMs"] is None or isinstance(d["sqliteCommitLatencyMs"], float)

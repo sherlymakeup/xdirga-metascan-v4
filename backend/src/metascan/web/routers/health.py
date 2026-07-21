@@ -48,8 +48,8 @@ async def get_metrics(
         "eventBusQueueSize": sum(
             s._queue_ref().qsize() for s in bus._subs.values()
         ),
-        "mt5PollLatencyMs": poll_latency if poll_latency is not None else 0.0,
-        "sqliteCommitLatencyMs": 0.0,
+        "mt5PollLatencyMs": poll_latency,
+        "sqliteCommitLatencyMs": None,
         "mutationInFlight": pipeline.mutation_in_flight,
         "activeSseConnections": active_sse_connections.count,
     }

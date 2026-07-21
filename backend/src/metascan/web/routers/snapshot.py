@@ -48,7 +48,7 @@ def _empty_snapshot() -> dict:
             "startedAt": None,
             "uptimeSec": 0,
             "lastHeartbeatAt": None,
-            "heartbeatLatencyMs": 0.0,
+            "heartbeatLatencyMs": None,
             "entriesEnabled": False,
             "automationEnabled": False,
             "hostname": None,
@@ -67,17 +67,17 @@ def _empty_snapshot() -> dict:
             "lastTickAt": None,
             "lastRequestAt": None,
             "queueDepth": 0,
-            "avgLatencyMs": 0.0,
+            "avgLatencyMs": None,
             "timeoutCount": 0,
             "reconnectAttempts": 0,
         },
         "account": {
             "currency": "USD",
-            "balance": 0.0,
-            "equity": 0.0,
-            "margin": 0.0,
-            "freeMargin": 0.0,
-            "marginLevel": 0.0,
+            "balance": None,
+            "equity": None,
+            "margin": None,
+            "freeMargin": None,
+            "marginLevel": None,
             "floatingPnl": None,
             "realizedPnlToday": None,
             "realizedPnlWeek": None,
@@ -143,7 +143,7 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
         "accountSourceFrameId": state.account_frame_id,
         "accountObservedAt": state.account_observed_at,
     })
-    observed_at = state.last_frame_at or _now_iso()
+    observed_at = state.last_frame_at
     connected = state.connection_state == "CONNECTED"
     now_msc = now_utc.timestamp() * 1000
     latest_tick_msc = max((tick.time_msc for tick in state.ticks.values()), default=0)
@@ -152,14 +152,14 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
         "state": "READY" if connected else "DEGRADED",
         "stateReason": f"MT5_{state.connection_state}",
         "lastHeartbeatAt": observed_at,
-        "heartbeatLatencyMs": state.poll_latency_ms or 0.0,
+        "heartbeatLatencyMs": state.poll_latency_ms,
     })
     snapshot["broker"].update({
         "connection": state.connection_state,
         "tradingPermitted": False,
         "lastTickAt": last_tick_at,
         "lastRequestAt": observed_at,
-        "avgLatencyMs": state.poll_latency_ms or 0.0,
+        "avgLatencyMs": state.poll_latency_ms,
     })
     snapshot["positions"] = [
         {
