@@ -878,7 +878,7 @@ export function getAllFixtureTrades(): ClosedTrade[] {
  * are zero, and freshness is UNAVAILABLE. Consumers must render disconnected UI.
  */
 export function createEmptySnapshot(): CockpitSnapshot {
-  const t = new Date().toISOString();
+  const t = "1970-01-01T00:00:00.000Z";
   return {
     positionsAvailable: false,
     positionsSourceFrameId: null,
@@ -930,20 +930,20 @@ export function createEmptySnapshot(): CockpitSnapshot {
       margin: 0,
       freeMargin: 0,
       marginLevel: 0,
-      floatingPnl: 0,
+      floatingPnl: null,
       realizedPnlToday: 0,
       realizedPnlWeek: 0,
       dailyDrawdown: 0,
       maxDrawdown: 0,
       grossExposure: 0,
       netExposure: 0,
-      openPositions: 0,
+      openPositions: null,
       pendingOrders: 0,
       tradesToday: 0,
       winRate: 0,
       profitFactor: 0,
       riskUtilization: 0,
-      updatedAt: t,
+      updatedAt: null,
       freshness: "UNAVAILABLE",
     },
     strategies: [],

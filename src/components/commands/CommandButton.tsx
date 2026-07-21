@@ -12,6 +12,7 @@ import { EnvironmentImpactPanel } from "@/components/runtime/environment-badges"
 import {
   submitCommand,
   useCapability,
+  getRuntimeMode,
   useCommand,
 } from "@/lib/runtime";
 import type { RuntimeCommandKind } from "@/lib/runtime";
@@ -56,7 +57,12 @@ const variantClasses: Record<CommandButtonVariant, string> = {
     "bg-status-crit text-primary-foreground hover:bg-status-crit/90 border border-transparent",
 };
 
-export function CommandButton({
+export function CommandButton(props: CommandButtonProps) {
+  if (getRuntimeMode() !== "fixture") return null;
+  return <DemoCommandButton {...props} />;
+}
+
+function DemoCommandButton({
   kind,
   label,
   icon,

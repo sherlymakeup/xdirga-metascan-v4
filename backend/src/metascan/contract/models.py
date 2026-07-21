@@ -390,7 +390,7 @@ class AccountSnapshot(WireModel):
     win_rate: float
     profit_factor: float
     risk_utilization: float
-    updated_at: str
+    updated_at: str | None
     freshness: DataFreshness
 
 

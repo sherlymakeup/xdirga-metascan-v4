@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Search, Star, TrendingDown, TrendingUp } from "lucide-react";
-import { useSnapshot } from "@/lib/adapters/runtime";
+import { useConnectionState, useSnapshot } from "@/lib/runtime";
 import { fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
 import { Panel } from "@/components/cockpit/panel";
 import { StatusBadge } from "@/components/cockpit/status-badge";
@@ -86,6 +86,7 @@ function pipValue(m: MarketSymbol): number {
 
 function MarketsPage() {
   const snap = useSnapshot();
+  const connection = useConnectionState();
   const [group, setGroup] = useState<Group>("ALL");
   const [q, setQ] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("symbol");
@@ -125,6 +126,12 @@ function MarketsPage() {
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
+      {connection.state !== "CONNECTED" && (
+        <div className="panel p-3 text-xs text-muted-foreground">{connection.state === "CONNECTING" ? "Loading authoritative markets…" : `Markets ${connection.state.toLowerCase()}`}</div>
+      )}
+      {connection.state === "CONNECTED" && snap.markets.length === 0 && (
+        <div className="panel p-3 text-xs text-muted-foreground">No market observations available</div>
+      )}
       {/* Market pulse strip */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {pulse.map((p) => {

@@ -103,7 +103,7 @@ export interface AccountSnapshot {
   winRate: number;
   profitFactor: number;
   riskUtilization: number;
-  updatedAt: string;
+  updatedAt: string | null;
   freshness: DataFreshness;
 }
 

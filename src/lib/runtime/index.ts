@@ -1,6 +1,5 @@
 // Public entry point for the runtime layer.
-// Selects the active adapter based on VITE_RUNTIME_MODE + localStorage override,
-// exposes hooks + command helpers.
+// Selects the active adapter from the explicit build-time source, exposes hooks + command helpers.
 
 import { useSyncExternalStore, useMemo } from "react";
 import type { CockpitSnapshot, ScenarioKey } from "@/lib/types";
@@ -34,26 +33,16 @@ export type RuntimeDataSource = "fixture" | "http";
 /** @deprecated use RuntimeDataSource; retained for compat with early phases. */
 export type RuntimeMode = RuntimeDataSource;
 
-const MODE_STORAGE_KEY = "xdirga.runtimeMode";
-
 function resolveInitialMode(): RuntimeDataSource {
   const envMode = (import.meta.env?.VITE_RUNTIME_MODE as string | undefined)?.toLowerCase();
-  let mode: RuntimeDataSource = envMode === "http" ? "http" : "fixture";
-  if (typeof window !== "undefined") {
-    try {
-      const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
-      if (stored === "fixture" || stored === "http") mode = stored;
-    } catch {
-      /* ignore */
-    }
-  }
-  return mode;
+  return envMode === "fixture" && import.meta.env?.DEV ? "fixture" : "http";
 }
 
 function buildAdapter(mode: RuntimeDataSource): RuntimeAdapter {
   if (mode === "http") {
     const baseUrl = (import.meta.env?.VITE_RUNTIME_BASE_URL as string | undefined) ?? "";
-    return new HttpRuntimeAdapter({ baseUrl });
+    const authToken = (import.meta.env?.VITE_RUNTIME_TOKEN as string | undefined) ?? "";
+    return new HttpRuntimeAdapter({ baseUrl, authToken });
   }
   return new MockRuntimeAdapter();
 }
@@ -73,25 +62,13 @@ export function getRuntimeMode(): RuntimeDataSource {
 }
 export const getRuntimeDataSource = getRuntimeMode;
 
-/** Persist the data source and reload. Switching adapters at runtime is unsafe. */
-export function setRuntimeMode(mode: RuntimeDataSource): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
-  } catch {
-    /* ignore */
-  }
-  window.location.reload();
+/** Runtime source is build-time only; production cannot be switched to fixtures. */
+export function setRuntimeMode(_mode: RuntimeDataSource): void {
+  void _mode;
 }
 export const setRuntimeDataSource = setRuntimeMode;
 
-export function hydrateScenarioFromStorage() {
-  if (adapter instanceof MockRuntimeAdapter) {
-    adapter.hydrateFromStorage();
-  }
-}
-
-
+export function hydrateScenarioFromStorage() {}
 
 // -----------------------------------------------------------------------------
 // Hooks
@@ -213,7 +190,9 @@ export async function submitRuntimeCommand(
   const { submitCommand: orchestrate } = await import("./commands/command-orchestrator");
   const result = await orchestrate({ kind, ...opts });
   if (!result.accepted) {
-    throw new Error(result.blockedReason ?? `Command blocked (${result.blockedCode ?? "UNKNOWN"}).`);
+    throw new Error(
+      result.blockedReason ?? `Command blocked (${result.blockedCode ?? "UNKNOWN"}).`,
+    );
   }
   return {
     commandId: result.commandId ?? result.existingCommandId ?? "",
@@ -222,23 +201,25 @@ export async function submitRuntimeCommand(
 }
 
 /** Wait for a command to reach a terminal state. Resolves with the final status. */
-export function awaitCommandTerminal(commandId: string, timeoutMs = 15000): Promise<RuntimeCommandStatus> {
+export function awaitCommandTerminal(
+  commandId: string,
+  timeoutMs = 15000,
+): Promise<RuntimeCommandStatus> {
   return new Promise((resolve, reject) => {
     const existing = commandStore.get(commandId);
     if (existing && isTerminal(existing.state)) {
       resolve(existing);
       return;
     }
-    let timer: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = commandStore.subscribe(() => {
       const s = commandStore.get(commandId);
       if (s && isTerminal(s.state)) {
         unsubscribe();
-        if (timer) clearTimeout(timer);
+        clearTimeout(timer);
         resolve(s);
       }
     });
-    timer = setTimeout(() => {
+    const timer = setTimeout(() => {
       unsubscribe();
       const s = commandStore.get(commandId);
       if (s) resolve(s);
@@ -257,10 +238,7 @@ export {
   restrictionFor,
   commandsBlockedByRestriction,
 } from "./state/freshness-policy";
-export {
-  executionUnknownLocks,
-  useExecutionUnknownLocks,
-} from "./state/execution-unknown-lock";
+export { executionUnknownLocks, useExecutionUnknownLocks } from "./state/execution-unknown-lock";
 export {
   useReconciliationRestriction,
   evaluateReconciliation,
@@ -312,4 +290,3 @@ export {
   type ConvergenceState,
   type ConvergenceStatus,
 } from "./state/convergence";
-

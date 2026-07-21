@@ -12,6 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { getRuntimeAdapter, useSnapshot } from "@/lib/adapters/runtime";
+import { getRuntimeMode, useConnectionState } from "@/lib/runtime";
 import { fmtDuration, fmtMoney, fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
 import { MetricCard } from "@/components/cockpit/metric-card";
 import { Panel } from "@/components/cockpit/panel";
@@ -48,6 +49,8 @@ interface ConfirmState {
 
 function CockpitPage() {
   const snap = useSnapshot();
+  const connection = useConnectionState();
+  const isDemo = getRuntimeMode() === "fixture";
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
   const critical = snap.alerts.filter((a) => !a.acknowledged && a.severity === "CRITICAL").length;
@@ -69,6 +72,10 @@ function CockpitPage() {
       <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
         <BrokerEnvironmentSummary />
         <FixtureSourceNotice entity="data" />
+        {connection.state !== "CONNECTED" && (
+          <div className="panel p-3 text-xs text-muted-foreground">{connection.state === "CONNECTING" ? "Loading authoritative snapshot…" : `Dashboard ${connection.state.toLowerCase()}`}</div>
+        )}
+        {!snap.accountAvailable && <div className="panel p-3 text-xs text-muted-foreground">Account unavailable</div>}
         {/* Header + primary controls */}
         <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto]">
           <div className="panel px-4 py-3">
@@ -90,11 +97,12 @@ function CockpitPage() {
                 <span>uptime <span className="num text-foreground">{fmtDuration(runtime.uptimeSec)}</span></span>
                 <span>started <span className="num text-foreground">{relativeTime(runtime.startedAt)}</span></span>
                 <span>last sync <span className="num text-foreground">{relativeTime(snap.broker.lastRequestAt)}</span></span>
+                <span>account observed <span className="num text-foreground">{snap.account.updatedAt ? relativeTime(snap.account.updatedAt) : "—"}</span></span>
               </div>
             </div>
           </div>
 
-          <div className="panel flex flex-wrap items-center gap-1 px-2 py-1.5">
+          {isDemo && <div className="panel flex flex-wrap items-center gap-1 px-2 py-1.5">
             <ControlButton
               icon={<Play className="h-3.5 w-3.5" />}
               disabled={!canStart}
@@ -215,7 +223,7 @@ function CockpitPage() {
                 })
               }
             />
-          </div>
+          </div>}
         </div>
 
         {/* Overview metrics */}
@@ -290,7 +298,7 @@ function CockpitPage() {
         </div>
       </div>
 
-      {confirm && (
+      {isDemo && confirm && (
         <ConfirmationDialog
           open={confirm.open}
           onOpenChange={(v) => setConfirm(v ? confirm : null)}
@@ -615,6 +623,7 @@ function ActiveStrategyPanel({ snap }: { snap: ReturnType<typeof useSnapshot> })
 }
 
 function AlertsPanel({ alerts }: { alerts: Alert[] }) {
+  const isDemo = getRuntimeMode() === "fixture";
   return (
     <Panel
       title="Active Alerts"
@@ -638,7 +647,7 @@ function AlertsPanel({ alerts }: { alerts: Alert[] }) {
                     <div className="mt-0.5 text-[11px] text-muted-foreground">{a.description}</div>
                     <div className="mt-1 flex items-center justify-between text-[10.5px] text-muted-foreground">
                       <span>{a.source} · {relativeTime(a.createdAt)}</span>
-                      {!a.acknowledged && (
+                      {isDemo && !a.acknowledged && (
                         <button
                           onClick={() => getRuntimeAdapter().sendCommand({ kind: "alert.acknowledge", id: a.id })}
                           className="rounded-sm border border-panel-border px-1.5 py-0.5 hover:bg-muted"

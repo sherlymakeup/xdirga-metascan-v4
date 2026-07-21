@@ -526,6 +526,11 @@ def test_snapshot_account_four_state_uses_account_provenance() -> None:
     assert snapshots[2]["account"]["floatingPnl"] is None
     assert snapshots[2]["account"]["openPositions"] is None
 
+    from metascan.contract.models import AccountSnapshot
+
+    validated = AccountSnapshot.model_validate(snapshots[0]["account"])
+    assert validated.updated_at is None
+
 
 def test_dashboard_read_state_rejects_invalid_connection_state() -> None:
     with pytest.raises(ValueError, match="invalid dashboard connection state"):

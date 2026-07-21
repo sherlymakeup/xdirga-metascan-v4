@@ -7,7 +7,12 @@
 // lifecycle, but nothing is ever executed on a real broker.
 
 import { buildSnapshot, getFixtureTradeHistory, SCENARIOS } from "@/lib/demo/scenarios";
-import type { CockpitSnapshot, ScenarioKey, TradeHistoryPage, TradeHistoryQuery } from "@/lib/types";
+import type {
+  CockpitSnapshot,
+  ScenarioKey,
+  TradeHistoryPage,
+  TradeHistoryQuery,
+} from "@/lib/types";
 import type { RuntimeAdapter } from "./runtime-adapter";
 import { buildCapabilities } from "./runtime-capabilities";
 import { EXPECTED_RUNTIME_CONTRACT, RUNTIME_CONTRACT } from "./runtime-contract";
@@ -43,7 +48,7 @@ export interface MockAdapterOptions {
 }
 
 export class MockRuntimeAdapter implements RuntimeAdapter {
-  readonly adapterType: "fixture" = "fixture";
+  readonly adapterType = "fixture" as const;
 
   private scenario: ScenarioKey = "healthy";
   private snapshot: CockpitSnapshot = buildSnapshot("healthy");
@@ -152,7 +157,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     };
   }
 
-
   // ---- Lifecycle ----------------------------------------------------------
   async connect(): Promise<void> {
     /* fixture adapter is always "connected" to its in-memory data source */
@@ -160,9 +164,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
   async disconnect(): Promise<void> {
     /* no-op */
   }
-
-
-
 
   // ---- Snapshots ----------------------------------------------------------
   getSnapshot(): CockpitSnapshot {
@@ -321,7 +322,9 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     await sleep(400);
     commandStore.update(commandId, {
       state: "IN_PROGRESS",
-      currentStep: isTradingCmd ? "Broker gateway forwarded request" : "Applying runtime transition",
+      currentStep: isTradingCmd
+        ? "Broker gateway forwarded request"
+        : "Applying runtime transition",
       progress: 0.55,
     });
     this.notifyCommand(commandId);
@@ -389,7 +392,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     return getFixtureTradeHistory(query?.cursor ?? null, query?.limit ?? 25);
   }
 
-
   private notifyCommand(commandId: string) {
     const status = commandStore.get(commandId);
     if (!status) return;
@@ -434,8 +436,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     return this.isDevelopmentFixture();
   }
 
-
-
   // ---- Demo controls ------------------------------------------------------
   setScenario(scenario: ScenarioKey): void {
     if (scenario === this.scenario) return;
@@ -461,14 +461,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     };
     for (const l of this.connectionListeners) l(this.connection);
 
-    try {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("xdirga.scenario", scenario);
-      }
-    } catch {
-      /* ignore */
-    }
-
     this.emitSnapshot();
   }
 
@@ -476,17 +468,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     return this.scenario;
   }
 
-  hydrateFromStorage() {
-    if (typeof window === "undefined") return;
-    try {
-      const stored = window.localStorage.getItem("xdirga.scenario");
-      if (stored && SCENARIOS.some((s) => s.key === stored)) {
-        this.setScenario(stored as ScenarioKey);
-      }
-    } catch {
-      /* ignore */
-    }
-  }
 }
 
 function sleep(ms: number) {

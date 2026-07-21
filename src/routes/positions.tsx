@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useSnapshot } from "@/lib/adapters/runtime";
+import { getRuntimeMode, useConnectionState, useSnapshot } from "@/lib/runtime";
 import { Panel } from "@/components/cockpit/panel";
 import { StatusBadge, type StatusTone } from "@/components/cockpit/status-badge";
 import { EmptyState } from "@/components/cockpit/states";
@@ -27,6 +27,8 @@ const protTone = (p: PositionProtection): StatusTone => {
 
 function PositionsPage() {
   const snap = useSnapshot();
+  const connection = useConnectionState();
+  const isDemo = getRuntimeMode() === "fixture";
 
   const totalFloat = snap.positions.reduce((s, p) => s + p.floatingPnl, 0);
   const unprotected = snap.positions.filter((p) => p.protection !== "PROTECTED").length;
@@ -35,6 +37,10 @@ function PositionsPage() {
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
       <BrokerEnvironmentSummary />
       <FixtureSourceNotice entity="position" />
+      {connection.state !== "CONNECTED" && (
+        <div className="panel p-3 text-xs text-muted-foreground">{connection.state === "CONNECTING" ? "Loading authoritative positions…" : `Positions ${connection.state.toLowerCase()}`}</div>
+      )}
+      {!snap.positionsAvailable && <div className="panel p-3 text-xs text-muted-foreground">Positions unavailable</div>}
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryTile label="Open positions" value={String(snap.positions.length)} />
         <SummaryTile
@@ -57,7 +63,7 @@ function PositionsPage() {
         title="Positions"
         subtitle={`${snap.positions.length} open`}
         toolbar={
-          <CommandButton
+          isDemo && snap.positionsAvailable ? <CommandButton
             kind="position.closeAll"
             label="Close all"
             variant="danger"
@@ -69,7 +75,7 @@ function PositionsPage() {
                 <li>Combined floating PnL: <span className="num">{fmtMoney(totalFloat)}</span></li>
               </ul>
             }
-          />
+          /> : null
         }
         bodyClassName="p-0"
       >
@@ -82,6 +88,7 @@ function PositionsPage() {
                 <tr>
                   <th className="px-2 py-1.5 text-left">Ticket</th>
                   <th className="px-2 py-1.5 text-left">Symbol</th>
+                  <th className="px-2 py-1.5 text-left">Ownership</th>
                   <th className="px-2 py-1.5 text-left">Side</th>
                   <th className="px-2 py-1.5 text-right">Vol</th>
                   <th className="px-2 py-1.5 text-right">Entry</th>
@@ -101,7 +108,7 @@ function PositionsPage() {
               </thead>
               <tbody>
                 {snap.positions.map((p) => (
-                  <PositionRow key={p.id} p={p} />
+                  <PositionRow key={p.id} p={p} isDemo={isDemo} />
                 ))}
               </tbody>
             </table>
@@ -112,11 +119,13 @@ function PositionsPage() {
   );
 }
 
-function PositionRow({ p }: { p: Position }) {
+function PositionRow({ p, isDemo }: { p: Position; isDemo: boolean }) {
+  const actionable = isDemo && p.dataAvailable && p.ownership === "BOT_MANAGED";
   return (
     <tr className="border-b border-panel-border/60 hover:bg-muted/40">
       <td className="num px-2 py-1.5 text-muted-foreground">{p.brokerTicket}</td>
       <td className="num px-2 py-1.5 font-semibold">{p.symbol}</td>
+      <td className="px-2 py-1.5"><StatusBadge tone={p.ownership === "BOT_MANAGED" ? "info" : "neutral"} size="sm">{p.ownership}</StatusBadge></td>
       <td className="px-2 py-1.5">
         <StatusBadge tone={p.side === "BUY" ? "ok" : "crit"} size="sm">
           {p.side}
@@ -149,7 +158,8 @@ function PositionRow({ p }: { p: Position }) {
       <td className="num px-2 py-1.5 text-muted-foreground">{p.openedAt ? relativeTime(p.openedAt) : "—"}</td>
       <td className="px-2 py-1.5 text-right">
         <div className="flex justify-end gap-1">
-          {p.management && (
+          {!actionable && <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Read-only</span>}
+          {actionable && p.management && (
             <CommandButton
               kind={p.management.paused ? "position.management.resume" : "position.management.pause"}
               targetId={p.id}
@@ -158,7 +168,7 @@ function PositionRow({ p }: { p: Position }) {
               size="sm"
             />
           )}
-          <CommandButton
+          {actionable && <CommandButton
             kind="position.close"
             targetId={p.id}
             label="Close"
@@ -174,7 +184,7 @@ function PositionRow({ p }: { p: Position }) {
                 <li>Strategy allocation freed: <span className="num">{fmtPct(p.riskPct)}</span></li>
               </ul>
             }
-          />
+          />}
         </div>
       </td>
     </tr>
