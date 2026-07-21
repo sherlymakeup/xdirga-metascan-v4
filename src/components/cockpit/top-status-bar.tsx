@@ -39,8 +39,12 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
     setHydrated(true);
   }, []);
 
-  const heartbeatAge = Math.max(0, Math.round((Date.now() - new Date(snap.runtime.lastHeartbeatAt).getTime()) / 1000));
-  
+  const heartbeatAge = snap.runtime.lastHeartbeatAt
+    ? Math.max(0, Math.round((Date.now() - new Date(snap.runtime.lastHeartbeatAt).getTime()) / 1000))
+    : null;
+  const brokerLatency = snap.broker.avgLatencyMs == null ? "—" : `${snap.broker.avgLatencyMs}ms`;
+  const uptime = snap.runtime.uptimeSec == null ? "—" : fmtDuration(snap.runtime.uptimeSec);
+
 
   return (
     <header className="sticky top-0 z-30 border-b border-panel-border bg-background/95 backdrop-blur">
@@ -91,9 +95,9 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
             <span className="num">{hydrated ? fmtTime(now.toISOString()) : "--:--:--"}</span>
             <span className="text-muted-foreground/70">local</span>
           </span>
-          <span className="num">↔ {snap.broker.avgLatencyMs}ms</span>
+          <span className="num">↔ {brokerLatency}</span>
           <span>
-            hb {hydrated ? `${heartbeatAge}s` : "--"} · uptime {hydrated ? fmtDuration(snap.runtime.uptimeSec) : "--"}
+            hb {hydrated && heartbeatAge != null ? `${heartbeatAge}s` : "—"} · uptime {hydrated ? uptime : "—"}
           </span>
         </div>
 
@@ -125,7 +129,7 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
           <span className="ml-1 inline-flex shrink-0 items-center gap-2 rounded-md border border-panel-border bg-panel-elevated px-2 py-1 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3" />
             <span className="num text-foreground/90">{hydrated ? fmtTime(now.toISOString()) : "--:--:--"}</span>
-            <span className="num">↔{snap.broker.avgLatencyMs}ms</span>
+            <span className="num">↔{brokerLatency}</span>
           </span>
         </div>
       </div>
@@ -145,7 +149,7 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
             <span className="font-semibold uppercase tracking-wider">{snap.runtime.state}</span> — {snap.runtime.stateReason}
           </span>
           <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
-            {relativeTime(snap.runtime.stateChangedAt, now.toISOString())}
+            {snap.runtime.stateChangedAt ? relativeTime(snap.runtime.stateChangedAt, now.toISOString()) : "—"}
           </span>
         </div>
       )}

@@ -5,7 +5,7 @@ import { StatusBadge, type StatusTone } from "@/components/cockpit/status-badge"
 import { EmptyState } from "@/components/cockpit/states";
 import { CommandButton } from "@/components/commands/CommandButton";
 import { BrokerEnvironmentSummary, FixtureSourceNotice } from "@/components/runtime/environment-badges";
-import { fmtMoney, fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
+import { fmtDateTime, fmtMoney, fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
 import type { Position, PositionProtection } from "@/lib/types";
 
 export const Route = createFileRoute("/positions")({
@@ -30,8 +30,10 @@ function PositionsPage() {
   const connection = useConnectionState();
   const isDemo = getRuntimeMode() === "fixture";
 
-  const totalFloat = snap.positions.reduce((s, p) => s + p.floatingPnl, 0);
-  const unprotected = snap.positions.filter((p) => p.protection !== "PROTECTED").length;
+  const positionsAvailable = snap.positionsAvailable;
+  const totalFloat = positionsAvailable ? snap.positions.reduce((s, p) => s + p.floatingPnl, 0) : null;
+  const unprotected = positionsAvailable ? snap.positions.filter((p) => p.protection !== "PROTECTED").length : null;
+  const closeAllAllowed = isDemo && positionsAvailable && snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
@@ -42,20 +44,20 @@ function PositionsPage() {
       )}
       {!snap.positionsAvailable && <div className="panel p-3 text-xs text-muted-foreground">Positions unavailable</div>}
       <div className="grid gap-3 md:grid-cols-4">
-        <SummaryTile label="Open positions" value={String(snap.positions.length)} />
+        <SummaryTile label="Open positions" value={positionsAvailable ? String(snap.positions.length) : "—"} />
         <SummaryTile
           label="Floating PnL"
           value={fmtMoney(totalFloat)}
-          tone={totalFloat >= 0 ? "ok" : "crit"}
+          tone={totalFloat == null ? "neutral" : totalFloat >= 0 ? "ok" : "crit"}
         />
         <SummaryTile
           label="Unprotected"
-          value={String(unprotected)}
-          tone={unprotected > 0 ? "warn" : "ok"}
+          value={unprotected == null ? "—" : String(unprotected)}
+          tone={unprotected == null ? "neutral" : unprotected > 0 ? "warn" : "ok"}
         />
         <SummaryTile
           label="Gross exposure"
-          value={fmtMoney(snap.account.grossExposure)}
+          value={positionsAvailable && snap.accountAvailable ? fmtMoney(snap.account.grossExposure) : "—"}
         />
       </div>
 
@@ -63,7 +65,7 @@ function PositionsPage() {
         title="Positions"
         subtitle={`${snap.positions.length} open`}
         toolbar={
-          isDemo && snap.positionsAvailable ? <CommandButton
+          closeAllAllowed ? <CommandButton
             kind="position.closeAll"
             label="Close all"
             variant="danger"
@@ -79,7 +81,9 @@ function PositionsPage() {
         }
         bodyClassName="p-0"
       >
-        {snap.positions.length === 0 ? (
+        {!positionsAvailable ? (
+          <EmptyState title="Positions unavailable" description="No authoritative position summary is available." />
+        ) : snap.positions.length === 0 ? (
           <EmptyState title="No open positions" description="The runtime is flat right now." />
         ) : (
           <div className="overflow-x-auto">
@@ -108,7 +112,7 @@ function PositionsPage() {
               </thead>
               <tbody>
                 {snap.positions.map((p) => (
-                  <PositionRow key={p.id} p={p} isDemo={isDemo} />
+                  <PositionRow key={p.id} p={p} isDemo={isDemo} positionsObservedAt={snap.positionsObservedAt} />
                 ))}
               </tbody>
             </table>
@@ -119,13 +123,15 @@ function PositionsPage() {
   );
 }
 
-function PositionRow({ p, isDemo }: { p: Position; isDemo: boolean }) {
-  const actionable = isDemo && p.dataAvailable && p.ownership === "BOT_MANAGED";
+function PositionRow({ p, isDemo, positionsObservedAt }: { p: Position; isDemo: boolean; positionsObservedAt: string | null }) {
+  const stale = !p.dataAvailable;
+  const actionable = isDemo && !stale && p.ownership === "BOT_MANAGED";
+  const observedAt = positionsObservedAt ? fmtDateTime(positionsObservedAt) : "N/A";
   return (
     <tr className="border-b border-panel-border/60 hover:bg-muted/40">
       <td className="num px-2 py-1.5 text-muted-foreground">{p.brokerTicket}</td>
       <td className="num px-2 py-1.5 font-semibold">{p.symbol}</td>
-      <td className="px-2 py-1.5"><StatusBadge tone={p.ownership === "BOT_MANAGED" ? "info" : "neutral"} size="sm">{p.ownership}</StatusBadge></td>
+      <td className="px-2 py-1.5"><div className="flex gap-1"><StatusBadge tone={p.ownership === "BOT_MANAGED" ? "info" : "neutral"} size="sm">{p.ownership}</StatusBadge>{stale && <StatusBadge tone="neutral" size="sm">STALE</StatusBadge>}</div></td>
       <td className="px-2 py-1.5">
         <StatusBadge tone={p.side === "BUY" ? "ok" : "crit"} size="sm">
           {p.side}
@@ -147,15 +153,15 @@ function PositionRow({ p, isDemo }: { p: Position; isDemo: boolean }) {
       <td className="num px-2 py-1.5 text-right">
         {p.riskAmount == null ? "—" : fmtMoney(p.riskAmount)} <span className="text-muted-foreground">({fmtPct(p.riskPct)})</span>
       </td>
-      <td className={`num px-2 py-1.5 text-right ${p.floatingPnl >= 0 ? "text-profit" : "text-loss"}`}>
+      <td className={`num px-2 py-1.5 text-right ${stale ? "" : p.floatingPnl >= 0 ? "text-profit" : "text-loss"}`}>
         {fmtMoney(p.floatingPnl)}
       </td>
-      <td className={`num px-2 py-1.5 text-right font-semibold ${p.netPnl >= 0 ? "text-profit" : "text-loss"}`}>
+      <td className={`num px-2 py-1.5 text-right font-semibold ${stale ? "" : p.netPnl >= 0 ? "text-profit" : "text-loss"}`}>
         {fmtMoney(p.netPnl)}
       </td>
       <td className="num px-2 py-1.5 text-right">{fmtNum(p.rMultiple, 2)}R</td>
       <td className="px-2 py-1.5 text-muted-foreground">{p.strategy}</td>
-      <td className="num px-2 py-1.5 text-muted-foreground">{p.openedAt ? relativeTime(p.openedAt) : "—"}</td>
+      <td className="num px-2 py-1.5 text-muted-foreground">{stale ? `Last observed ${observedAt}` : p.openedAt ? relativeTime(p.openedAt) : "—"}</td>
       <td className="px-2 py-1.5 text-right">
         <div className="flex justify-end gap-1">
           {!actionable && <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Read-only</span>}

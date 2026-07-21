@@ -88,6 +88,16 @@ export class EventDeduplicator {
     this.cursors.clear();
   }
 
+  resetToSnapshot(runtimeId: string, bootId: string, sequence: number): void {
+    this.cursors.set(runtimeId, {
+      runtimeId,
+      bootId,
+      lastSequence: sequence,
+      seenIds: new Set(),
+      seenIdsOrder: [],
+    });
+  }
+
   private trackId(cursor: RuntimeCursor, id: string) {
     cursor.seenIds.add(id);
     cursor.seenIdsOrder.push(id);

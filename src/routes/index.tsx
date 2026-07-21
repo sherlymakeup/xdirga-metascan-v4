@@ -57,6 +57,7 @@ function CockpitPage() {
   const openExec = snap.orders.filter((o) => o.status === "EXECUTION_UNKNOWN").length;
 
   const runtime = snap.runtime;
+  const accountAvailable = snap.accountAvailable;
   const canStart = runtime.state === "STOPPED" || runtime.state === "ERROR" || runtime.state === "DISCONNECTED";
   const canPause = runtime.state === "READY" || runtime.state === "DEGRADED";
   const canResume = runtime.state === "PAUSED";
@@ -94,9 +95,9 @@ function CockpitPage() {
                 <StatusBadge tone={runtime.tradingMode === "LIVE" ? "crit" : "info"}>
                   {runtime.tradingMode}
                 </StatusBadge>
-                <span>uptime <span className="num text-foreground">{fmtDuration(runtime.uptimeSec)}</span></span>
-                <span>started <span className="num text-foreground">{relativeTime(runtime.startedAt)}</span></span>
-                <span>last sync <span className="num text-foreground">{relativeTime(snap.broker.lastRequestAt)}</span></span>
+                <span>uptime <span className="num text-foreground">{runtime.uptimeSec == null ? "—" : fmtDuration(runtime.uptimeSec)}</span></span>
+                <span>started <span className="num text-foreground">{runtime.startedAt ? relativeTime(runtime.startedAt) : "—"}</span></span>
+                <span>last sync <span className="num text-foreground">{snap.broker.lastRequestAt ? relativeTime(snap.broker.lastRequestAt) : "—"}</span></span>
                 <span>account observed <span className="num text-foreground">{snap.account.updatedAt ? relativeTime(snap.account.updatedAt) : "—"}</span></span>
               </div>
             </div>
@@ -230,40 +231,44 @@ function CockpitPage() {
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <MetricCard
             label="Balance"
-            value={fmtMoney(snap.account.balance)}
+            value={accountAvailable ? fmtMoney(snap.account.balance) : "—"}
             hint={snap.account.currency}
             freshness={snap.account.freshness}
           />
           <MetricCard
             label="Equity"
-            value={fmtMoney(snap.account.equity)}
-            delta={snap.account.equity - snap.account.balance}
-            deltaLabel="vs balance"
+            value={accountAvailable ? fmtMoney(snap.account.equity) : "—"}
+            delta={
+              accountAvailable && snap.account.equity != null && snap.account.balance != null
+                ? snap.account.equity - snap.account.balance
+                : undefined
+            }
+            deltaLabel={accountAvailable ? "vs balance" : undefined}
             freshness={snap.account.freshness}
           />
           <MetricCard
             label="Floating PnL"
-            value={snap.account.floatingPnl == null ? "—" : fmtMoney(snap.account.floatingPnl)}
-            tone={snap.account.floatingPnl == null ? undefined : snap.account.floatingPnl >= 0 ? "ok" : "crit"}
-            hint={snap.account.openPositions == null ? "—" : `${snap.account.openPositions} open`}
+            value={!accountAvailable || snap.account.floatingPnl == null ? "—" : fmtMoney(snap.account.floatingPnl)}
+            tone={!accountAvailable || snap.account.floatingPnl == null ? "neutral" : snap.account.floatingPnl >= 0 ? "ok" : "crit"}
+            hint={!accountAvailable || snap.account.openPositions == null ? "N/A" : `${snap.account.openPositions} open`}
           />
           <MetricCard
             label="Realized Today"
-            value={fmtMoney(snap.account.realizedPnlToday)}
-            tone={snap.account.realizedPnlToday >= 0 ? "ok" : "crit"}
-            hint={`${snap.account.tradesToday} trades · win ${fmtNum(snap.account.winRate, 1)}%`}
+            value={accountAvailable ? fmtMoney(snap.account.realizedPnlToday) : "—"}
+            tone={!accountAvailable || snap.account.realizedPnlToday == null ? "neutral" : snap.account.realizedPnlToday >= 0 ? "ok" : "crit"}
+            hint={accountAvailable ? `${fmtNum(snap.account.tradesToday, 0)} trades · win ${fmtNum(snap.account.winRate, 1)}%` : "N/A"}
           />
           <MetricCard
             label="Daily Drawdown"
-            value={fmtMoney(snap.account.dailyDrawdown)}
-            tone={snap.account.dailyDrawdown < -300 ? "crit" : snap.account.dailyDrawdown < 0 ? "warn" : "ok"}
-            hint={`max ${fmtPct(snap.account.maxDrawdown)}`}
+            value={accountAvailable ? fmtMoney(snap.account.dailyDrawdown) : "—"}
+            tone={!accountAvailable || snap.account.dailyDrawdown == null ? "neutral" : snap.account.dailyDrawdown < -300 ? "crit" : snap.account.dailyDrawdown < 0 ? "warn" : "ok"}
+            hint={accountAvailable ? `max ${fmtPct(snap.account.maxDrawdown)}` : "N/A"}
           />
           <MetricCard
             label="Risk Utilization"
-            value={`${fmtNum(snap.account.riskUtilization, 0)}%`}
-            tone={snap.account.riskUtilization > 80 ? "crit" : snap.account.riskUtilization > 60 ? "warn" : "ok"}
-            hint={`margin lvl ${fmtNum(snap.account.marginLevel, 0)}%`}
+            value={accountAvailable ? `${fmtNum(snap.account.riskUtilization, 0)}%` : "—"}
+            tone={!accountAvailable || snap.account.riskUtilization == null ? "neutral" : snap.account.riskUtilization > 80 ? "crit" : snap.account.riskUtilization > 60 ? "warn" : "ok"}
+            hint={accountAvailable ? `margin lvl ${fmtNum(snap.account.marginLevel, 0)}%` : "N/A"}
           />
         </div>
 
@@ -354,6 +359,7 @@ function EquityPanel({ snap }: { snap: ReturnType<typeof useSnapshot> }) {
   const [range, setRange] = useState<"1H" | "4H" | "1D" | "1W" | "1M">("1D");
 
   const data = snap.equityCurve;
+  const hasData = data.length > 0;
   const values = data.map((d) =>
     tab === "equity" ? d.equity : tab === "balance" ? d.balance : tab === "floating" ? d.floatingPnl : d.drawdown,
   );
@@ -405,11 +411,11 @@ function EquityPanel({ snap }: { snap: ReturnType<typeof useSnapshot> }) {
           </button>
         ))}
         <div className="num ml-auto text-[11px] text-muted-foreground">
-          latest <span className="text-foreground">{fmtMoney(values[values.length - 1] ?? 0)}</span>
+          latest <span className="text-foreground">{hasData ? fmtMoney(values[values.length - 1]) : "—"}</span>
         </div>
       </div>
       <div className="relative h-56 w-full px-2 py-2">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
+        {hasData ? <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="h-full w-full">
           <defs>
             <linearGradient id="grad" x1="0" x2="0" y1="0" y2="1">
               <stop offset="0%" stopColor="var(--color-primary)" stopOpacity="0.35" />
@@ -424,7 +430,7 @@ function EquityPanel({ snap }: { snap: ReturnType<typeof useSnapshot> }) {
             fill="url(#grad)"
           />
           <polyline points={path} fill="none" stroke="var(--color-primary)" strokeWidth="0.8" vectorEffect="non-scaling-stroke" />
-        </svg>
+        </svg> : <EmptyState title="Equity unavailable" description="No authoritative equity history is available." />}
       </div>
     </Panel>
   );

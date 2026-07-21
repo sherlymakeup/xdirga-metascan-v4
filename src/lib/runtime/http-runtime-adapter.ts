@@ -8,7 +8,7 @@ import { buildCapabilities } from "./runtime-capabilities";
 import { createEmptySnapshot } from "@/lib/demo/scenarios";
 import { evaluateHandshake } from "./runtime-handshake";
 import { EventDeduplicator } from "./events/event-deduplicator";
-import { validateEnvelope } from "./events/event-schemas";
+import { validateEnvelope, validateHandshake, validateSnapshot } from "./events/event-schemas";
 import { validateTransition } from "./commands/command-transitions";
 import { RUNTIME_EVENT_TYPES } from "./events/runtime-event-envelope";
 import type {
@@ -58,15 +58,14 @@ function redactToken(text: string, token: string | undefined): string {
 }
 
 function disconnectedEnvelope(): RuntimeSnapshotEnvelope {
-  const t = new Date().toISOString();
   return {
     metadata: {
       runtimeId: "rt_disconnected",
       bootId: "boot_disconnected",
       revision: 0,
       sequence: 0,
-      generatedAt: t,
-      serverTimestamp: t,
+      generatedAt: "",
+      serverTimestamp: "",
       protocolId: RUNTIME_CONTRACT.protocolId,
       protocolVersion: RUNTIME_CONTRACT.protocolVersion,
       schemaVersion: RUNTIME_CONTRACT.schemaVersion,
@@ -96,7 +95,7 @@ function disconnectedOperator(): OperatorIdentity {
     displayName: "Disconnected",
     role: "VIEWER",
     sessionId: "sess_disconnected",
-    authenticatedAt: "1970-01-01T00:00:00.000Z",
+    authenticatedAt: "",
     simulated: false,
   };
 }
@@ -172,27 +171,31 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     for (const l of this.handshakeListeners) l(h);
   }
 
-  private applySnapshot(env: RuntimeSnapshotEnvelope, seedDedup = true) {
+  private applySnapshot(env: RuntimeSnapshotEnvelope) {
     this.envelope = env;
     this.lastSequence = env.metadata.sequence;
-    if (seedDedup) {
-      const now = new Date(this.now()).toISOString();
-      this.dedup.evaluate({
-        eventId: `seed:${env.metadata.bootId}:${env.metadata.sequence}`,
-        type: "runtime.state.changed",
-        runtimeId: env.metadata.runtimeId,
-        bootId: env.metadata.bootId,
-        revision: env.metadata.revision,
-        sequence: env.metadata.sequence,
-        occurredAt: now,
-        emittedAt: now,
-        receivedAt: now,
-        severity: "INFO",
-        source: "LOCAL_RUNTIME",
-        payload: {},
-      });
-    }
+    this.dedup.resetToSnapshot(env.metadata.runtimeId, env.metadata.bootId, env.metadata.sequence);
     for (const l of this.snapshotListeners) l(env);
+  }
+
+  private acceptSnapshot(raw: unknown): RuntimeSnapshotEnvelope | null {
+    const validated = validateSnapshot(raw);
+    if (!validated.ok || !this.handshake) return null;
+    const env = validated.snapshot as RuntimeSnapshotEnvelope;
+    const { metadata } = env;
+    if (
+      metadata.runtimeId !== this.handshake.runtimeId || metadata.bootId !== this.handshake.bootId ||
+      env.snapshot.runtime.id !== this.handshake.runtimeId || metadata.protocolId !== this.handshake.protocolId ||
+      metadata.protocolVersion !== this.handshake.protocolVersion || metadata.schemaVersion !== this.handshake.schemaVersion ||
+      metadata.schemaHash !== this.handshake.schemaHash || metadata.revision < this.envelope.metadata.revision ||
+      metadata.sequence < this.lastSequence
+    ) return null;
+    return env;
+  }
+
+  private acceptHandshake(raw: unknown): RuntimeHandshake | null {
+    const validated = validateHandshake(raw);
+    return validated.ok ? validated.handshake as RuntimeHandshake : null;
   }
 
   private applyCapabilities(caps: RuntimeCapabilities) {
@@ -281,6 +284,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
         dataAgeMs: this.now() - this.lastObservedAt,
         errorMessage: "No observable stream activity within the client threshold.",
       });
+      this.scheduleReconnect(this.connectGeneration);
     }, CLIENT_OBSERVATION_STALE_AFTER_MS);
   }
 
@@ -372,6 +376,10 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     const validated = validateEnvelope(parsed);
     if (!validated.ok || !validated.envelope) return;
     const env = validated.envelope;
+    if (!this.handshake || env.runtimeId !== this.handshake.runtimeId || env.bootId !== this.handshake.bootId || env.revision < this.envelope.metadata.revision) {
+      await this.resyncSnapshot(generation);
+      return;
+    }
     const outcome = this.dedup.evaluate(env);
 
     if (outcome.action === "drop") return;
@@ -382,13 +390,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     }
 
     this.lastSequence = env.sequence;
-    this.setConnection({
-      state: "CONNECTED",
-      lastMessageAt: new Date(this.now()).toISOString(),
-      dataAgeMs: 0,
-      errorMessage: undefined,
-    });
-    this.observeClientActivity();
+    this.setConnection({ lastMessageAt: new Date(this.now()).toISOString() });
 
     for (const l of this.eventListeners) l(env);
     this.scheduleSnapshotRefresh(generation);
@@ -420,6 +422,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   }
 
   private resyncInFlight = false;
+  private resyncPending = false;
   private snapshotRefreshScheduled = false;
 
   private scheduleSnapshotRefresh(generation: number) {
@@ -433,17 +436,27 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
 
   private async resyncSnapshot(generation: number, reopenStream = true) {
     if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
-    if (this.resyncInFlight) return;
+    if (this.resyncInFlight) {
+      this.resyncPending = true;
+      return;
+    }
     this.resyncInFlight = true;
     try {
-      const raw = (await this.restGet("/snapshot")) as RuntimeSnapshotEnvelope;
-      if (generation !== this.connectGeneration || !raw?.metadata || !raw?.snapshot) return;
-      this.applySnapshot(raw);
-      if (reopenStream) this.openEventSource(raw.metadata.bootId, raw.metadata.sequence, generation);
+      const snapshot = this.acceptSnapshot(await this.restGet("/snapshot"));
+      if (!snapshot) throw new Error("Invalid or stale snapshot response.");
+      this.applySnapshot(snapshot);
+      this.setConnection({ state: "CONNECTED", dataAgeMs: 0, errorMessage: undefined, errorCode: undefined });
+      this.observeClientActivity();
+      if (reopenStream) this.openEventSource(snapshot.metadata.bootId, snapshot.metadata.sequence, generation);
     } catch {
-      /* keep last accepted state */
+      this.setConnection({ state: "RECONNECTING", errorMessage: "Snapshot recovery failed." });
+      this.scheduleReconnect(generation);
     } finally {
       this.resyncInFlight = false;
+      if (this.resyncPending) {
+        this.resyncPending = false;
+        void this.resyncSnapshot(generation, reopenStream);
+      }
     }
   }
 
@@ -482,8 +495,9 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   private async reconnect(generation: number) {
     if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
     try {
-      const hs = (await this.restGet("/handshake")) as RuntimeHandshake;
+      const hs = this.acceptHandshake(await this.restGet("/handshake"));
       if (generation !== this.connectGeneration) return;
+      if (!hs) throw new Error("Invalid handshake response.");
       const compat = evaluateHandshake(hs);
       if (compat.safeMode) {
         this.setHandshake(hs);
@@ -498,10 +512,10 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       const caps = (await this.restGet("/capabilities")) as RuntimeCapabilities;
       if (generation !== this.connectGeneration) return;
       this.applyCapabilities(caps);
-      const snap = (await this.restGet("/snapshot")) as RuntimeSnapshotEnvelope;
+      const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (generation !== this.connectGeneration) return;
+      if (!snap) throw new Error("Invalid or stale snapshot response.");
       this.applySnapshot(snap);
-      this.dedup.reset();
       this.openEventSource(hs.bootId, snap.metadata.sequence, generation);
     } catch (e) {
       if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
@@ -530,8 +544,9 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       errorCode: undefined,
     });
     try {
-      const hs = (await this.restGet("/handshake")) as RuntimeHandshake;
+      const hs = this.acceptHandshake(await this.restGet("/handshake"));
       if (generation !== this.connectGeneration) return;
+      if (!hs) throw new Error("Invalid handshake response.");
       this.setHandshake(hs);
       const compat = evaluateHandshake(hs);
       if (compat.safeMode) {
@@ -545,11 +560,9 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       const caps = (await this.restGet("/capabilities")) as RuntimeCapabilities;
       if (generation !== this.connectGeneration) return;
       this.applyCapabilities(caps);
-      const snap = (await this.restGet("/snapshot")) as RuntimeSnapshotEnvelope;
+      const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (generation !== this.connectGeneration) return;
-      if (!snap?.metadata || !snap?.snapshot) {
-        throw new Error("Invalid snapshot response.");
-      }
+      if (!snap) throw new Error("Invalid or stale snapshot response.");
       this.applySnapshot(snap);
       this.operator = {
         operatorId: "op_local_runtime",

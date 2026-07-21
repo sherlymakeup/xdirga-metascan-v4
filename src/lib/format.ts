@@ -1,6 +1,7 @@
 // Formatting helpers used across the cockpit. Tabular where relevant.
 
-export function fmtMoney(v: number, currency = "USD", digits = 2): string {
+export function fmtMoney(v: number | null | undefined, currency = "USD", digits = 2): string {
+  if (v == null || Number.isNaN(v)) return "—";
   const sign = v < 0 ? "-" : "";
   const abs = Math.abs(v).toLocaleString("en-US", {
     minimumFractionDigits: digits,

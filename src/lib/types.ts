@@ -43,12 +43,12 @@ export interface RuntimeStatus {
   tradingMode: TradingMode;
   state: RuntimeState;
   previousState: RuntimeState;
-  stateChangedAt: string;
+  stateChangedAt: string | null;
   stateReason: string;
-  startedAt: string;
-  uptimeSec: number;
-  lastHeartbeatAt: string;
-  heartbeatLatencyMs: number;
+  startedAt: string | null;
+  uptimeSec: number | null;
+  lastHeartbeatAt: string | null;
+  heartbeatLatencyMs: number | null;
   entriesEnabled: boolean;
   automationEnabled: boolean;
   hostname: string;
@@ -76,33 +76,33 @@ export interface BrokerStatus {
   tradingPermitted: boolean;
   terminalVersion: string;
   lastTickAt: string | null;
-  lastRequestAt: string;
+  lastRequestAt: string | null;
   queueDepth: number;
-  avgLatencyMs: number;
+  avgLatencyMs: number | null;
   timeoutCount: number;
   reconnectAttempts: number;
 }
 
 export interface AccountSnapshot {
   currency: string;
-  balance: number;
-  equity: number;
-  margin: number;
-  freeMargin: number;
-  marginLevel: number;
+  balance: number | null;
+  equity: number | null;
+  margin: number | null;
+  freeMargin: number | null;
+  marginLevel: number | null;
   floatingPnl: number | null;
-  realizedPnlToday: number;
-  realizedPnlWeek: number;
-  dailyDrawdown: number;
-  maxDrawdown: number;
-  grossExposure: number;
-  netExposure: number;
+  realizedPnlToday: number | null;
+  realizedPnlWeek: number | null;
+  dailyDrawdown: number | null;
+  maxDrawdown: number | null;
+  grossExposure: number | null;
+  netExposure: number | null;
   openPositions: number | null;
-  pendingOrders: number;
-  tradesToday: number;
-  winRate: number;
-  profitFactor: number;
-  riskUtilization: number;
+  pendingOrders: number | null;
+  tradesToday: number | null;
+  winRate: number | null;
+  profitFactor: number | null;
+  riskUtilization: number | null;
   updatedAt: string | null;
   freshness: DataFreshness;
 }
@@ -402,7 +402,7 @@ export interface ReconciliationIssue {
 
 export interface ReconciliationSummary {
   state: "IDLE" | "RUNNING" | "OK" | "ISSUES" | "FAILED";
-  lastRunAt: string;
+  lastRunAt: string | null;
   brokerOrders: number;
   runtimeOrders: number;
   brokerPositions: number;

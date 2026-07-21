@@ -116,7 +116,7 @@ export function useBrokerEnvironment(): BrokerEnvironmentViewModel {
       terminalConnected: brokerState === "CONNECTED",
       lastHeartbeatAt: snap.broker.lastTickAt,
       lastSuccessfulRequestAt: snap.broker.lastRequestAt,
-      latencyMs: snap.broker.avgLatencyMs,
+      latencyMs: snap.broker.avgLatencyMs ?? undefined,
       reconnectAttempts: snap.broker.reconnectAttempts,
       source: frontendDataSource,
     };

@@ -269,13 +269,16 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     // Idempotency guard.
     const existing = commandStore.findActiveByIdempotency(request.idempotencyKey);
     if (existing) {
-      return {
+      const receipt = {
         commandId: existing.commandId,
         clientRequestId: existing.clientRequestId,
         correlationId: existing.correlationId,
-        state: "ACCEPTED",
+        state: "ACCEPTED" as const,
         acceptedAt: existing.createdAt,
+        receivedAt: existing.createdAt,
+        idempotencyKey: existing.idempotencyKey,
       };
+      return receipt;
     }
 
     const commandId = `cmd_${safeUuid()}`;
@@ -286,13 +289,16 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
     void this.simulateLifecycle(commandId, request);
     this.notifyCommand(commandId);
 
-    return {
+    const receipt = {
       commandId,
       clientRequestId: request.clientRequestId,
       correlationId: request.correlationId,
-      state: "ACCEPTED",
+      state: "ACCEPTED" as const,
       acceptedAt,
+      receivedAt: acceptedAt,
+      idempotencyKey: request.idempotencyKey,
     };
+    return receipt;
   }
 
   private async simulateLifecycle(commandId: string, request: RuntimeCommandRequest) {

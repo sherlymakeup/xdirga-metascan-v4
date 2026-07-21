@@ -3,6 +3,7 @@ import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, CheckCheck, X, Pause, Play, Trash2 } from "lucide-react";
 import { useSnapshot, getRuntimeAdapter } from "@/lib/adapters/runtime";
+import { getRuntimeMode } from "@/lib/runtime";
 import {
   useEventHistory,
   useEventHistoryPaused,
@@ -55,6 +56,7 @@ function dayKey(iso: string) {
 
 function EventsPage() {
   const snap = useSnapshot();
+  const isDemo = getRuntimeMode() === "fixture";
   const [tab, setTab] = useState<"alerts" | "events" | "incidents" | "live">("alerts");
   const liveEvents = useEventHistory();
   const livePauseState = useEventHistoryPaused();
@@ -130,13 +132,15 @@ function EventsPage() {
               <span className="text-muted-foreground">Unresolved:</span>
               <span className="num font-semibold">{unresolvedCrit}</span>
             </div>
-            <button
-              onClick={ackAll}
-              disabled={filteredAlerts.every((a) => a.acknowledged)}
-              className="inline-flex items-center gap-1.5 rounded-sm border border-panel-border bg-panel-elevated px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
-            >
-              <CheckCheck className="h-3.5 w-3.5" /> Ack visible
-            </button>
+            {isDemo && (
+              <button
+                onClick={() => ackAll()}
+                disabled={filteredAlerts.every((a) => a.acknowledged)}
+                className="inline-flex items-center gap-1.5 rounded-sm border border-panel-border bg-panel-elevated px-2.5 py-1 text-[11px] font-medium uppercase tracking-wider hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <CheckCheck className="h-3.5 w-3.5" /> Ack visible
+              </button>
+            )}
           </div>
         </div>
 
@@ -368,7 +372,7 @@ function EventsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 border-t border-panel-border bg-panel-elevated/60 px-3 py-2">
-                  {!selected.acknowledged ? (
+                  {isDemo && !selected.acknowledged ? (
                     <CommandButton
                       kind="alert.acknowledge"
                       label="Acknowledge"

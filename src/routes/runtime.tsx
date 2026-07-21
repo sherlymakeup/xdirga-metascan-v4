@@ -36,10 +36,10 @@ function RuntimePage() {
               <KV label="Previous" value={snap.runtime.previousState} />
               <KV label="Reason" value={snap.runtime.stateReason} full />
               <KV label="Session" value={<span className="num">{snap.runtime.sessionId}</span>} />
-              <KV label="Uptime" value={fmtDuration(snap.runtime.uptimeSec)} />
+              <KV label="Uptime" value={snap.runtime.uptimeSec == null ? "—" : fmtDuration(snap.runtime.uptimeSec)} />
               <KV label="Version" value={<span className="num">{snap.runtime.version} · {snap.runtime.buildHash}</span>} />
               <KV label="Host" value={<span className="num">{snap.runtime.hostname}</span>} />
-              <KV label="Heartbeat" value={<span className="num">{snap.runtime.heartbeatLatencyMs}ms · {relativeTime(snap.runtime.lastHeartbeatAt)}</span>} />
+              <KV label="Heartbeat" value={<span className="num">{snap.runtime.heartbeatLatencyMs == null ? "—" : `${snap.runtime.heartbeatLatencyMs}ms`} · {snap.runtime.lastHeartbeatAt ? relativeTime(snap.runtime.lastHeartbeatAt) : "—"}</span>} />
             </div>
           </Panel>
 
@@ -136,7 +136,7 @@ function ReconciliationPanel({ r }: { r: ReconciliationSummary }) {
   return (
     <Panel
       title="Reconciliation"
-      subtitle={`Last run ${relativeTime(r.lastRunAt)}`}
+      subtitle={r.lastRunAt ? `Last run ${relativeTime(r.lastRunAt)}` : "Last run —"}
       toolbar={<StatusBadge tone={stateTone} size="sm">{r.state}</StatusBadge>}
     >
       <div className="grid gap-3 md:grid-cols-4">

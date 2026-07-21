@@ -7,6 +7,7 @@ import {
 import { RUNTIME_CONTRACT } from "../runtime-contract";
 import type { RuntimeHandshake } from "../runtime-types";
 import type { RuntimeEventEnvelope } from "../events/runtime-event-envelope";
+import { validateHandshake, validateSnapshot } from "../events/event-schemas";
 
 const TOKEN = "test-token-secret";
 const BASE = "http://127.0.0.1:8787/v4";
@@ -79,6 +80,12 @@ function snapshotEnvelope(seq = 10, bootId = "boot-1") {
       source: "LOCAL_RUNTIME" as const,
     },
     snapshot: {
+      positionsAvailable: true,
+      positionsSourceFrameId: 1,
+      positionsObservedAt: "2026-07-15T00:00:00.000Z",
+      accountAvailable: true,
+      accountSourceFrameId: 1,
+      accountObservedAt: "2026-07-15T00:00:00.000Z",
       runtime: {
         id: "xdirga",
         sessionId: "s1",
@@ -276,6 +283,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 function createHarness(opts?: {
   handshake?: RuntimeHandshake | (() => RuntimeHandshake);
   snapshotSeq?: number;
+  snapshot?: () => unknown | Promise<unknown>;
   failPaths?: Set<string>;
   commandPost?: (body: unknown) => unknown;
   commandGet?: (id: string) => unknown;
@@ -302,7 +310,7 @@ function createHarness(opts?: {
       return jsonResponse(hs);
     }
     if (path === "/capabilities") return jsonResponse(capabilitiesBody());
-    if (path === "/snapshot") return jsonResponse(snapshotEnvelope(opts?.snapshotSeq ?? 10));
+    if (path === "/snapshot") return jsonResponse(await (opts?.snapshot?.() ?? snapshotEnvelope(opts?.snapshotSeq ?? 10)));
     if (path === "/commands" && (init?.method ?? "GET").toUpperCase() === "POST") {
       const body = init?.body ? JSON.parse(String(init.body)) : {};
       const res =
@@ -384,6 +392,25 @@ async function flush() {
   await Promise.resolve();
   await Promise.resolve();
 }
+
+describe("runtime wire validation", () => {
+  it("rejects malformed nested account, positions, markets, and enums", () => {
+    const account = snapshotEnvelope();
+    (account.snapshot.account as { balance: unknown }).balance = "invalid";
+    expect(validateSnapshot(account).ok).toBe(false);
+    const position = snapshotEnvelope();
+    (position.snapshot as { positions: unknown[] }).positions = [{ id: "p1" }];
+    expect(validateSnapshot(position).ok).toBe(false);
+    const market = snapshotEnvelope();
+    (market.snapshot as { markets: unknown[] }).markets = [{ symbol: "XAUUSD", freshness: "INVALID" }];
+    expect(validateSnapshot(market).ok).toBe(false);
+  });
+
+  it("rejects incomplete handshake broker semantics", () => {
+    expect(validateHandshake({ ...compatibleHandshake(), brokerEnvironment: "PAPER" }).ok).toBe(false);
+    expect(validateHandshake({ ...compatibleHandshake(), brokerProvider: undefined }).ok).toBe(false);
+  });
+});
 
 describe("HttpRuntimeAdapter", () => {
   beforeEach(() => {
@@ -587,7 +614,7 @@ describe("HttpRuntimeAdapter", () => {
     await flush();
     expect(adapter.getConnectionState().state).toBe("CONNECTED");
     h.advance(15_000);
-    expect(adapter.getConnectionState().state).toBe("STALE");
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
     expect(adapter.getConnectionState().dataAgeMs).toBe(15_000);
   });
 
@@ -827,5 +854,86 @@ describe("HttpRuntimeAdapter", () => {
     expect(delivered).toEqual([]);
     const latest = FakeEventSource.instances[FakeEventSource.instances.length - 1];
     expect(new URL(latest.url).searchParams.get("sequence")).toBe("10");
+  });
+
+  it("follows up once when an event arrives during an in-flight snapshot refresh", async () => {
+    let resolveSnapshot: ((snapshot: unknown) => void) | undefined;
+    let snapshots = 0;
+    const h = createHarness({
+      snapshot: () => {
+        snapshots += 1;
+        if (snapshots === 1) return snapshotEnvelope(10);
+        return new Promise((resolve) => {
+          resolveSnapshot = resolve;
+        });
+      },
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+    const es = FakeEventSource.instances[0];
+    es.emitNamed("runtime.state.changed", eventEnv({ eventId: "e1", sequence: 11 }));
+    await flush();
+    es.emitNamed("runtime.state.changed", eventEnv({ eventId: "e2", sequence: 12 }));
+    await flush();
+    expect(snapshots).toBe(2);
+    resolveSnapshot!(snapshotEnvelope(11));
+    await flush();
+    await flush();
+    expect(snapshots).toBe(3);
+  });
+
+  it("rejects an older snapshot after a gap", async () => {
+    let snapshots = 0;
+    const h = createHarness({
+      snapshot: () => (snapshots++ === 0 ? snapshotEnvelope(10) : snapshotEnvelope(9)),
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+    FakeEventSource.instances[0].emitNamed("runtime.state.changed", eventEnv({ eventId: "gap", sequence: 20 }));
+    await flush();
+    await flush();
+    expect(adapter.getSnapshotEnvelope().metadata.sequence).toBe(10);
+  });
+
+  it("foreign runtime event resyncs without publishing", async () => {
+    const h = createHarness();
+    const adapter = new HttpRuntimeAdapter(h.config);
+    const delivered: string[] = [];
+    adapter.subscribeEvents((event) => delivered.push(event.eventId));
+    await adapter.connect();
+    await flush();
+    FakeEventSource.instances[0].emitNamed("runtime.state.changed", eventEnv({ eventId: "foreign", sequence: 11, runtimeId: "other" }));
+    await flush();
+    expect(delivered).toEqual([]);
+  });
+
+  it("clears recovery only after a valid snapshot publishes", async () => {
+    let snapshots = 0;
+    const h = createHarness({
+      snapshot: () => (snapshots++ === 0 ? snapshotEnvelope(10) : { metadata: {}, snapshot: {} }),
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+    FakeEventSource.instances[0].emitNamed("runtime.state.changed", eventEnv({ eventId: "gap", sequence: 20 }));
+    await flush();
+    await flush();
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+  });
+
+  it("stale reconnects then errors after exhaustion", async () => {
+    const h = createHarness();
+    const adapter = new HttpRuntimeAdapter({ ...h.config, maxReconnectAttempts: 1, initialReconnectDelayMs: 1 });
+    await adapter.connect();
+    await flush();
+    h.advance(15_000);
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+    h.advance(1);
+    await flush();
+    FakeEventSource.instances[FakeEventSource.instances.length - 1].emitError();
+    await flush();
+    expect(adapter.getConnectionState().state).toBe("ERROR");
   });
 });
