@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import tempfile
 from contextlib import asynccontextmanager
 from typing import Any
 
@@ -50,7 +51,9 @@ def create_wired_app(
         env_magic = os.environ.get("BOT_MAGIC", "").strip()
         bot_magic = int(env_magic) if env_magic else 0
 
-    journal = Journal(journal_path or ":memory:")
+    if journal_path is None:
+        journal_path = tempfile.mkstemp(prefix="metascan-journal-", suffix=".sqlite")[1]
+    journal = Journal(journal_path)
     journal.open()
 
     bus = EventBus(journal)
@@ -64,6 +67,7 @@ def create_wired_app(
         nonlocal gateway, consumer
         await bus.start()
         a.state.bus = bus
+        a.state.journal = journal
         if config is not None:
             a.state.config = config
 

@@ -24,6 +24,9 @@ def get_bus(request: Request) -> EventBus:
 
 
 def get_journal(request: Request) -> Journal:
+    journal = getattr(request.app.state, "journal", None)
+    if journal is not None:
+        return journal
     raise NotImplementedError("override in tests or wire via app state")
 
 
