@@ -34,7 +34,7 @@ export interface ConvergenceState {
   latestEventRevision: number | null;
   latestEventSequence: number | null;
   revisionDrift: number | null; // events - snapshot (null if unknown)
-  observedAt: string;
+  observedAt: string | null;
 }
 
 const CONVERGENCE_WINDOW = 5;
@@ -47,7 +47,7 @@ const INITIAL: ConvergenceState = {
   latestEventRevision: null,
   latestEventSequence: null,
   revisionDrift: null,
-  observedAt: new Date(0).toISOString(),
+  observedAt: null,
 };
 
 type Listener = () => void;

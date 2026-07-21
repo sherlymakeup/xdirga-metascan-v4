@@ -54,7 +54,7 @@ function dayKey(iso: string) {
   return `${prefix} — ${d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}`;
 }
 
-function EventsPage() {
+export function EventsPage() {
   const snap = useSnapshot();
   const isDemo = getRuntimeMode() === "fixture";
   const [tab, setTab] = useState<"alerts" | "events" | "incidents" | "live">("alerts");
@@ -372,7 +372,9 @@ function EventsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 border-t border-panel-border bg-panel-elevated/60 px-3 py-2">
-                  {isDemo && !selected.acknowledged ? (
+                  {selected.acknowledged ? (
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-status-ok/90">✓ Acknowledged</span>
+                  ) : isDemo ? (
                     <CommandButton
                       kind="alert.acknowledge"
                       label="Acknowledge"
@@ -382,7 +384,7 @@ function EventsPage() {
                       variant="primary"
                     />
                   ) : (
-                    <span className="text-[11px] font-semibold uppercase tracking-widest text-status-ok/90">✓ Acknowledged</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Open · read-only</span>
                   )}
                   <span className="ml-auto text-[10px] text-muted-foreground">Runtime authoritative · UI request only</span>
                 </div>

@@ -90,6 +90,21 @@ export function useConnectionState(): RuntimeConnectionStateSnapshot {
   );
 }
 
+export function useHasValidatedSnapshot(): boolean {
+  return useSyncExternalStore(
+    (l) => adapter.subscribeSnapshot(() => l()),
+    () => getHasValidatedSnapshot(adapter),
+    () => getHasValidatedSnapshot(adapter),
+  );
+}
+
+function getHasValidatedSnapshot(a: RuntimeAdapter): boolean {
+  if ("hasValidatedSnapshotPublished" in a && typeof a.hasValidatedSnapshotPublished === "function") {
+    return a.hasValidatedSnapshotPublished();
+  }
+  return true;
+}
+
 export function useCapabilities(): RuntimeCapabilities {
   // Capabilities are recomputed on scenario change; snapshot subscription is a good trigger.
   return useSyncExternalStore(

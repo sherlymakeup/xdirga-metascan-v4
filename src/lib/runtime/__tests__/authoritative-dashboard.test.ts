@@ -62,14 +62,14 @@ describe("authoritative dashboard UI", () => {
     expect(route).toContain('stale ? "" : p.floatingPnl >= 0 ? "text-profit" : "text-loss"');
     expect(route).toContain("const positionsAvailable = snap.positionsAvailable");
     expect(route).toContain(
-      'snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable)',
+      'snap.positions.length > 0 && snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable)',
     );
   });
 
   it("keeps legacy acknowledgement controls fixture-only", () => {
     expect(events).toContain('const isDemo = getRuntimeMode() === "fixture"');
-    expect(events).toContain("isDemo && !selected.acknowledged");
-    expect(events).toContain("isDemo && (");
+    expect(events).toContain("selected.acknowledged ? (");
+    expect(events).toContain("isDemo ? (");
     expect(events).not.toContain("onClick={ackAll}");
   });
 

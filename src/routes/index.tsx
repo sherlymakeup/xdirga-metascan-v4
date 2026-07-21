@@ -12,7 +12,7 @@ import {
   Zap,
 } from "lucide-react";
 import { getRuntimeAdapter, useSnapshot } from "@/lib/adapters/runtime";
-import { getRuntimeMode, useConnectionState } from "@/lib/runtime";
+import { getRuntimeMode, useConnectionState, useHasValidatedSnapshot } from "@/lib/runtime";
 import { fmtDuration, fmtMoney, fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
 import { MetricCard } from "@/components/cockpit/metric-card";
 import { Panel } from "@/components/cockpit/panel";
@@ -47,7 +47,7 @@ interface ConfirmState {
   confirmLabel?: string;
 }
 
-function CockpitPage() {
+export function CockpitPage() {
   const snap = useSnapshot();
   const connection = useConnectionState();
   const isDemo = getRuntimeMode() === "fixture";
@@ -58,6 +58,8 @@ function CockpitPage() {
 
   const runtime = snap.runtime;
   const accountAvailable = snap.accountAvailable;
+  const hasValidatedSnapshot = useHasValidatedSnapshot();
+  const loading = !hasValidatedSnapshot;
   const canStart = runtime.state === "STOPPED" || runtime.state === "ERROR" || runtime.state === "DISCONNECTED";
   const canPause = runtime.state === "READY" || runtime.state === "DEGRADED";
   const canResume = runtime.state === "PAUSED";
@@ -232,43 +234,45 @@ function CockpitPage() {
           <MetricCard
             label="Balance"
             value={accountAvailable ? fmtMoney(snap.account.balance) : "—"}
-            hint={snap.account.currency}
-            freshness={snap.account.freshness}
+            hint={loading ? undefined : snap.account.currency}
+            freshness={loading ? undefined : snap.account.freshness}
+            loading={loading}
           />
           <MetricCard
             label="Equity"
             value={accountAvailable ? fmtMoney(snap.account.equity) : "—"}
-            delta={
-              accountAvailable && snap.account.equity != null && snap.account.balance != null
-                ? snap.account.equity - snap.account.balance
-                : undefined
-            }
-            deltaLabel={accountAvailable ? "vs balance" : undefined}
-            freshness={snap.account.freshness}
+            delta={loading ? undefined : accountAvailable && snap.account.equity != null && snap.account.balance != null ? snap.account.equity - snap.account.balance : undefined}
+            deltaLabel={loading || !accountAvailable ? undefined : "vs balance"}
+            freshness={loading ? undefined : snap.account.freshness}
+            loading={loading}
           />
           <MetricCard
             label="Floating PnL"
             value={!accountAvailable || snap.account.floatingPnl == null ? "—" : fmtMoney(snap.account.floatingPnl)}
             tone={!accountAvailable || snap.account.floatingPnl == null ? "neutral" : snap.account.floatingPnl >= 0 ? "ok" : "crit"}
-            hint={!accountAvailable || snap.account.openPositions == null ? "N/A" : `${snap.account.openPositions} open`}
+            hint={loading || !accountAvailable || snap.account.openPositions == null ? undefined : `${snap.account.openPositions} open`}
+            loading={loading}
           />
           <MetricCard
             label="Realized Today"
             value={accountAvailable ? fmtMoney(snap.account.realizedPnlToday) : "—"}
             tone={!accountAvailable || snap.account.realizedPnlToday == null ? "neutral" : snap.account.realizedPnlToday >= 0 ? "ok" : "crit"}
-            hint={accountAvailable ? `${fmtNum(snap.account.tradesToday, 0)} trades · win ${fmtNum(snap.account.winRate, 1)}%` : "N/A"}
+            hint={loading || !accountAvailable ? undefined : `${fmtNum(snap.account.tradesToday, 0)} trades · win ${fmtNum(snap.account.winRate, 1)}%`}
+            loading={loading}
           />
           <MetricCard
             label="Daily Drawdown"
             value={accountAvailable ? fmtMoney(snap.account.dailyDrawdown) : "—"}
             tone={!accountAvailable || snap.account.dailyDrawdown == null ? "neutral" : snap.account.dailyDrawdown < -300 ? "crit" : snap.account.dailyDrawdown < 0 ? "warn" : "ok"}
-            hint={accountAvailable ? `max ${fmtPct(snap.account.maxDrawdown)}` : "N/A"}
+            hint={loading || !accountAvailable ? undefined : `max ${fmtPct(snap.account.maxDrawdown)}`}
+            loading={loading}
           />
           <MetricCard
             label="Risk Utilization"
             value={accountAvailable ? `${fmtNum(snap.account.riskUtilization, 0)}%` : "—"}
             tone={!accountAvailable || snap.account.riskUtilization == null ? "neutral" : snap.account.riskUtilization > 80 ? "crit" : snap.account.riskUtilization > 60 ? "warn" : "ok"}
-            hint={accountAvailable ? `margin lvl ${fmtNum(snap.account.marginLevel, 0)}%` : "N/A"}
+            hint={loading || !accountAvailable ? undefined : `margin lvl ${fmtNum(snap.account.marginLevel, 0)}%`}
+            loading={loading}
           />
         </div>
 
@@ -577,11 +581,13 @@ function RuntimeHealthPanel({ subsystems }: { subsystems: SubsystemHealth[] }) {
 function ActiveStrategyPanel({ snap }: { snap: ReturnType<typeof useSnapshot> }) {
   const s = snap.strategies.find((x) => x.status === "ACTIVE") ?? snap.strategies[0];
   const meters = useMemo(() => {
+    if (!s) return [];
     return [
       { label: "Confidence", value: s.confidence * 100, warnAt: 30, breachAt: 20, disp: `${(s.confidence * 100).toFixed(0)}%`, inverted: true },
       { label: "Allocation used", value: s.allocationPct, warnAt: 80, breachAt: 100, disp: `${s.allocationPct}%` },
     ];
   }, [s]);
+  if (!s) return null;
   return (
     <Panel
       title="Active Strategy"

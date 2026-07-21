@@ -144,6 +144,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   private intentionalDisconnect = false;
   private connecting = false;
   private lastSequence = 0;
+  private hasValidatedSnapshot = false;
   private sseBoundHandlers: Array<{ type: string; handler: (ev: MessageEvent) => void }> = [];
 
   constructor(config: HttpAdapterConfig) {
@@ -167,6 +168,12 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   }
 
   private setHandshake(h: RuntimeHandshake | null) {
+    if (h && this.handshake && h.bootId !== this.handshake.bootId) {
+      this.lastSequence = 0;
+      this.envelope = { ...this.envelope, metadata: { ...this.envelope.metadata, revision: 0, sequence: 0 } };
+      this.dedup.reset();
+      this.hasValidatedSnapshot = false;
+    }
     this.handshake = h;
     for (const l of this.handshakeListeners) l(h);
   }
@@ -175,6 +182,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     this.envelope = env;
     this.lastSequence = env.metadata.sequence;
     this.dedup.resetToSnapshot(env.metadata.runtimeId, env.metadata.bootId, env.metadata.sequence);
+    this.hasValidatedSnapshot = true;
     for (const l of this.snapshotListeners) l(env);
   }
 
@@ -423,6 +431,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
 
   private resyncInFlight = false;
   private resyncPending = false;
+  private resyncReopenRequested = false;
   private snapshotRefreshScheduled = false;
 
   private scheduleSnapshotRefresh(generation: number) {
@@ -438,24 +447,29 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
     if (this.resyncInFlight) {
       this.resyncPending = true;
+      if (reopenStream) this.resyncReopenRequested = true;
       return;
     }
     this.resyncInFlight = true;
+    if (reopenStream) this.resyncReopenRequested = true;
+    const shouldReopen = this.resyncReopenRequested;
     try {
       const snapshot = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (!snapshot) throw new Error("Invalid or stale snapshot response.");
       this.applySnapshot(snapshot);
       this.setConnection({ state: "CONNECTED", dataAgeMs: 0, errorMessage: undefined, errorCode: undefined });
       this.observeClientActivity();
-      if (reopenStream) this.openEventSource(snapshot.metadata.bootId, snapshot.metadata.sequence, generation);
+      if (shouldReopen) this.openEventSource(snapshot.metadata.bootId, snapshot.metadata.sequence, generation);
     } catch {
       this.setConnection({ state: "RECONNECTING", errorMessage: "Snapshot recovery failed." });
       this.scheduleReconnect(generation);
     } finally {
       this.resyncInFlight = false;
+      const pendingReopen = this.resyncReopenRequested;
+      this.resyncReopenRequested = false;
       if (this.resyncPending) {
         this.resyncPending = false;
-        void this.resyncSnapshot(generation, reopenStream);
+        void this.resyncSnapshot(generation, pendingReopen);
       }
     }
   }
@@ -610,13 +624,15 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     return this.envelope;
   }
 
+  hasValidatedSnapshotPublished(): boolean {
+    return this.hasValidatedSnapshot;
+  }
+
   async refreshSnapshot(): Promise<RuntimeSnapshotEnvelope> {
-    const raw = (await this.restGet("/snapshot")) as RuntimeSnapshotEnvelope;
-    if (!raw?.metadata || !raw?.snapshot) {
-      throw new Error("Invalid snapshot response.");
-    }
-    this.applySnapshot(raw);
-    return raw;
+    const snapshot = this.acceptSnapshot(await this.restGet("/snapshot"));
+    if (!snapshot) throw new Error("Invalid or stale snapshot response.");
+    this.applySnapshot(snapshot);
+    return snapshot;
   }
 
   subscribeSnapshot(listener: (env: RuntimeSnapshotEnvelope) => void): () => void {
@@ -648,7 +664,8 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   }
 
   async refreshHandshake(): Promise<RuntimeHandshake> {
-    const hs = (await this.restGet("/handshake")) as RuntimeHandshake;
+    const hs = this.acceptHandshake(await this.restGet("/handshake"));
+    if (!hs) throw new Error("Invalid handshake response.");
     this.setHandshake(hs);
     return hs;
   }

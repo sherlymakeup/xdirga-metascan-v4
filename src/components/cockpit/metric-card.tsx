@@ -79,15 +79,17 @@ export function MetricCard({
           {value}
         </div>
       )}
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate">{hint}</span>
-        {delta != null && (
-          <span className={cn("num tabular", deltaTone)}>
-            {delta > 0 ? "▲" : delta < 0 ? "▼" : "▪"} {Math.abs(delta).toFixed(2)}
-            {deltaLabel && <span className="ml-1 text-muted-foreground">{deltaLabel}</span>}
-          </span>
-        )}
-      </div>
+      {!loading && (
+        <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+          <span className="truncate">{hint}</span>
+          {delta != null && (
+            <span className={cn("num tabular", deltaTone)}>
+              {delta > 0 ? "▲" : delta < 0 ? "▼" : "▪"} {Math.abs(delta).toFixed(2)}
+              {deltaLabel && <span className="ml-1 text-muted-foreground">{deltaLabel}</span>}
+            </span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

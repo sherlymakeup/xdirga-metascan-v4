@@ -297,7 +297,7 @@ function ConvergencePanel() {
             <Row label="Boot" value={conv.latestEventBootId ?? "—"} />
             <Row label="Revision" value={String(conv.latestEventRevision ?? "—")} />
             <Row label="Sequence" value={String(conv.latestEventSequence ?? "—")} />
-            <Row label="Observed at" value={conv.observedAt} />
+            <Row label="Observed at" value={conv.observedAt ?? "—"} />
           </dl>
         </div>
       </div>

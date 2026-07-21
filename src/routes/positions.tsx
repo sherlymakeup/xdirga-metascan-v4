@@ -25,15 +25,16 @@ const protTone = (p: PositionProtection): StatusTone => {
   return "neutral";
 };
 
-function PositionsPage() {
+export function PositionsPage() {
   const snap = useSnapshot();
   const connection = useConnectionState();
   const isDemo = getRuntimeMode() === "fixture";
 
   const positionsAvailable = snap.positionsAvailable;
+  const hasRetainedRows = snap.positions.length > 0;
   const totalFloat = positionsAvailable ? snap.positions.reduce((s, p) => s + p.floatingPnl, 0) : null;
   const unprotected = positionsAvailable ? snap.positions.filter((p) => p.protection !== "PROTECTED").length : null;
-  const closeAllAllowed = isDemo && positionsAvailable && snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable);
+  const closeAllAllowed = isDemo && positionsAvailable && snap.positions.length > 0 && snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable);
 
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
@@ -42,7 +43,7 @@ function PositionsPage() {
       {connection.state !== "CONNECTED" && (
         <div className="panel p-3 text-xs text-muted-foreground">{connection.state === "CONNECTING" ? "Loading authoritative positions…" : `Positions ${connection.state.toLowerCase()}`}</div>
       )}
-      {!snap.positionsAvailable && <div className="panel p-3 text-xs text-muted-foreground">Positions unavailable</div>}
+      {!snap.positionsAvailable && !hasRetainedRows && <div className="panel p-3 text-xs text-muted-foreground">Positions unavailable</div>}
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryTile label="Open positions" value={positionsAvailable ? String(snap.positions.length) : "—"} />
         <SummaryTile
@@ -81,7 +82,7 @@ function PositionsPage() {
         }
         bodyClassName="p-0"
       >
-        {!positionsAvailable ? (
+        {!positionsAvailable && !hasRetainedRows ? (
           <EmptyState title="Positions unavailable" description="No authoritative position summary is available." />
         ) : snap.positions.length === 0 ? (
           <EmptyState title="No open positions" description="The runtime is flat right now." />
