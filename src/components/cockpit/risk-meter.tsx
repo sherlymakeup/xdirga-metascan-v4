@@ -32,11 +32,7 @@ export function RiskMeter({
   const breached = inverted ? value < breachAt : value >= breachAt;
   const warning = inverted ? value < warnAt : value >= warnAt;
 
-  const fillColor = breached
-    ? "bg-status-crit"
-    : warning
-      ? "bg-status-warn"
-      : "bg-status-ok";
+  const fillColor = breached ? "bg-status-crit" : warning ? "bg-status-warn" : "bg-status-ok";
 
   return (
     <div className={cn("space-y-1", className)}>
@@ -49,11 +45,13 @@ export function RiskMeter({
           </span>
         </div>
       )}
-      <div className={cn("relative w-full overflow-hidden rounded-sm bg-muted", compact ? "h-1.5" : "h-2")}>
-        <div
-          className={cn("h-full transition-all", fillColor)}
-          style={{ width: `${pct}%` }}
-        />
+      <div
+        className={cn(
+          "relative w-full overflow-hidden rounded-sm bg-muted",
+          compact ? "h-1.5" : "h-2",
+        )}
+      >
+        <div className={cn("h-full transition-all", fillColor)} style={{ width: `${pct}%` }} />
         <div
           className="absolute top-0 h-full w-px bg-status-warn/60"
           style={{ left: `${warnPct}%` }}

@@ -11,10 +11,17 @@
 import { getRuntimeAdapter } from "../index";
 import { commandStore, isTerminal, makeRequest } from "../runtime-command-store";
 import { evaluateHandshake } from "../runtime-handshake";
-import { classifyFreshness, commandsBlockedByRestriction, restrictionFor } from "../state/freshness-policy";
+import {
+  classifyFreshness,
+  commandsBlockedByRestriction,
+  restrictionFor,
+} from "../state/freshness-policy";
 import { deriveIdempotencyKey } from "./command-equivalence";
 import { executionUnknownLocks } from "../state/execution-unknown-lock";
-import { evaluateReconciliation, isCommandBlockedByReconciliation } from "../state/reconciliation-restrictions";
+import {
+  evaluateReconciliation,
+  isCommandBlockedByReconciliation,
+} from "../state/reconciliation-restrictions";
 import { roleAllows, roleBlockReason } from "../state/operator-role";
 import type { RuntimeCommandKind } from "../runtime-types";
 
@@ -153,7 +160,9 @@ export function evaluateSubmission(input: CommandSubmissionInput): CommandSubmis
  * evaluateSubmission first, then hands to the adapter. Trading commands are
  * never auto-retried on failure — that is a deliberate operator action.
  */
-export async function submitCommand(input: CommandSubmissionInput): Promise<CommandSubmissionResult> {
+export async function submitCommand(
+  input: CommandSubmissionInput,
+): Promise<CommandSubmissionResult> {
   const pre = evaluateSubmission(input);
   if (!pre.accepted || pre.deduplicated) return pre;
 
@@ -195,18 +204,17 @@ export function registerExecutionUnknown(status: {
     kind: status.kind,
     targetId: status.targetId,
     correlationId: status.correlationId,
-    operation:
-      status.kind.startsWith("position.close")
-        ? "CLOSE"
-        : status.kind === "order.cancel" || status.kind === "order.cancelAll"
-          ? "CANCEL"
-          : status.kind === "position.modifyProtection"
-            ? "PROTECTION"
-            : status.kind === "runtime.emergencyKill"
-              ? "KILL_STEP"
-              : status.kind.startsWith("order.")
-                ? "SUBMIT"
-                : "OTHER",
+    operation: status.kind.startsWith("position.close")
+      ? "CLOSE"
+      : status.kind === "order.cancel" || status.kind === "order.cancelAll"
+        ? "CANCEL"
+        : status.kind === "position.modifyProtection"
+          ? "PROTECTION"
+          : status.kind === "runtime.emergencyKill"
+            ? "KILL_STEP"
+            : status.kind.startsWith("order.")
+              ? "SUBMIT"
+              : "OTHER",
   });
 }
 

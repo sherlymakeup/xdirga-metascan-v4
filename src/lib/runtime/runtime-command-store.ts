@@ -131,7 +131,6 @@ class CommandStore {
     return this.countsCache;
   }
 
-
   private trim() {
     if (this.commands.size <= MAX_HISTORY) return;
     // Drop oldest terminal commands.

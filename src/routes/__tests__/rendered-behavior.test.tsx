@@ -19,7 +19,12 @@ vi.mock("@/lib/runtime", () => ({
   getRuntimeAdapter: () => ({
     sendCommand: vi.fn(),
   }),
-  useCapability: () => ({ allowed: true, riskLevel: 1, requiresReason: false, requiresTypedConfirmation: false }),
+  useCapability: () => ({
+    allowed: true,
+    riskLevel: 1,
+    requiresReason: false,
+    requiresTypedConfirmation: false,
+  }),
   useHasValidatedSnapshot: () => mockHasValidatedSnapshotRef.current,
 }));
 

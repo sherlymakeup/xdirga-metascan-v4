@@ -164,4 +164,3 @@ export function useNotificationCounts() {
     () => EMPTY_COUNTS,
   );
 }
-

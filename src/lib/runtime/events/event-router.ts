@@ -79,7 +79,10 @@ export function routeEvent(raw: unknown): RouteOutcome {
       type: "runtime.state.changed",
       severity: "WARNING",
       receivedAt: now,
-      payload: { note: "boot-id changed — event ordering reset", previousBootId: outcome.previousBootId },
+      payload: {
+        note: "boot-id changed — event ordering reset",
+        previousBootId: outcome.previousBootId,
+      },
     };
     eventHistoryStore.push(resetEnv);
     notificationCenter.ingest(resetEnv, decideNotification(resetEnv));

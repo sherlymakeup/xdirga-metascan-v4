@@ -4,11 +4,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { Search, CheckCheck, X, Pause, Play, Trash2 } from "lucide-react";
 import { useSnapshot, getRuntimeAdapter } from "@/lib/adapters/runtime";
 import { getRuntimeMode } from "@/lib/runtime";
-import {
-  useEventHistory,
-  useEventHistoryPaused,
-  eventHistoryStore,
-} from "@/lib/runtime/events";
+import { useEventHistory, useEventHistoryPaused, eventHistoryStore } from "@/lib/runtime/events";
 import { Panel } from "@/components/cockpit/panel";
 import { StatusBadge, type StatusTone } from "@/components/cockpit/status-badge";
 import { EmptyState } from "@/components/cockpit/states";
@@ -17,7 +13,6 @@ import { relativeTime, fmtTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { Alert, LogSeverity, Severity } from "@/lib/types";
 import type { EventSeverity } from "@/lib/runtime/events";
-
 
 export const Route = createFileRoute("/events")({
   head: () => ({
@@ -30,10 +25,22 @@ export const Route = createFileRoute("/events")({
 });
 
 const sevTone = (s: Severity): StatusTone =>
-  s === "CRITICAL" || s === "HIGH" ? "crit" : s === "MEDIUM" ? "warn" : s === "LOW" ? "info" : "neutral";
+  s === "CRITICAL" || s === "HIGH"
+    ? "crit"
+    : s === "MEDIUM"
+      ? "warn"
+      : s === "LOW"
+        ? "info"
+        : "neutral";
 
 const logTone = (s: LogSeverity): StatusTone =>
-  s === "CRITICAL" || s === "ERROR" ? "crit" : s === "WARNING" ? "warn" : s === "INFO" ? "info" : "neutral";
+  s === "CRITICAL" || s === "ERROR"
+    ? "crit"
+    : s === "WARNING"
+      ? "warn"
+      : s === "INFO"
+        ? "info"
+        : "neutral";
 
 const sevAccent: Record<Severity, string> = {
   CRITICAL: "bg-status-crit",
@@ -50,7 +57,11 @@ function dayKey(iso: string) {
   const y = new Date(now);
   y.setDate(now.getDate() - 1);
   const isYesterday = d.toDateString() === y.toDateString();
-  const prefix = isToday ? "Today" : isYesterday ? "Yesterday" : d.toLocaleDateString(undefined, { weekday: "short" });
+  const prefix = isToday
+    ? "Today"
+    : isYesterday
+      ? "Yesterday"
+      : d.toLocaleDateString(undefined, { weekday: "short" });
   return `${prefix} — ${d.toLocaleDateString(undefined, { day: "2-digit", month: "short", year: "numeric" }).toUpperCase()}`;
 }
 
@@ -86,7 +97,15 @@ export function EventsPage() {
       if (!showAckd && a.acknowledged) return false;
       if (severityFilter !== "ALL" && a.severity !== severityFilter) return false;
       if (sourceFilter !== "ALL" && a.source !== sourceFilter) return false;
-      if (q && !(a.title.toLowerCase().includes(q) || a.description.toLowerCase().includes(q) || a.source.toLowerCase().includes(q))) return false;
+      if (
+        q &&
+        !(
+          a.title.toLowerCase().includes(q) ||
+          a.description.toLowerCase().includes(q) ||
+          a.source.toLowerCase().includes(q)
+        )
+      )
+        return false;
       return true;
     });
   }, [snap.alerts, severityFilter, sourceFilter, query, showAckd]);
@@ -103,16 +122,27 @@ export function EventsPage() {
 
   const selected = filteredAlerts.find((a) => a.id === selectedId) ?? filteredAlerts[0] ?? null;
 
-  const unresolvedCrit = snap.alerts.filter((a) => !a.acknowledged && (a.severity === "CRITICAL" || a.severity === "HIGH")).length;
+  const unresolvedCrit = snap.alerts.filter(
+    (a) => !a.acknowledged && (a.severity === "CRITICAL" || a.severity === "HIGH"),
+  ).length;
   const ackAll = () => {
-    for (const a of filteredAlerts) if (!a.acknowledged) getRuntimeAdapter().sendCommand({ kind: "alert.acknowledge", id: a.id });
+    for (const a of filteredAlerts)
+      if (!a.acknowledged) getRuntimeAdapter().sendCommand({ kind: "alert.acknowledge", id: a.id });
   };
 
   const filteredEvents = useMemo(() => {
     const q = query.trim().toLowerCase();
     return snap.events.filter((e) => {
       if (logSeverity !== "ALL" && e.severity !== logSeverity) return false;
-      if (q && !(e.message.toLowerCase().includes(q) || e.component.toLowerCase().includes(q) || e.source.toLowerCase().includes(q))) return false;
+      if (
+        q &&
+        !(
+          e.message.toLowerCase().includes(q) ||
+          e.component.toLowerCase().includes(q) ||
+          e.source.toLowerCase().includes(q)
+        )
+      )
+        return false;
       return true;
     });
   }, [snap.events, logSeverity, query]);
@@ -123,12 +153,19 @@ export function EventsPage() {
       <Panel bodyClassName="p-0">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-panel-border px-4 py-3">
           <div className="min-w-0">
-            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Incident Console</div>
+            <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              Incident Console
+            </div>
             <h1 className="mt-0.5 text-[15px] font-semibold leading-tight">Events &amp; Alerts</h1>
           </div>
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1.5 rounded-sm border border-panel-border bg-panel-elevated px-2 py-1 text-[11px]">
-              <span className={cn("h-1.5 w-1.5 rounded-full", unresolvedCrit > 0 ? "bg-status-crit animate-pulse" : "bg-status-ok")} />
+              <span
+                className={cn(
+                  "h-1.5 w-1.5 rounded-full",
+                  unresolvedCrit > 0 ? "bg-status-crit animate-pulse" : "bg-status-ok",
+                )}
+              />
               <span className="text-muted-foreground">Unresolved:</span>
               <span className="num font-semibold">{unresolvedCrit}</span>
             </div>
@@ -158,15 +195,19 @@ export function EventsPage() {
                 )}
               >
                 <div>
-                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">{s}</div>
-                  <div className={cn(
-                    "num mt-0.5 text-xl font-bold leading-none",
-                    s === "CRITICAL" && "text-status-crit",
-                    s === "HIGH" && "text-status-crit/90",
-                    s === "MEDIUM" && "text-status-warn",
-                    s === "LOW" && "text-status-info",
-                    s === "INFO" && "text-foreground/70",
-                  )}>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                    {s}
+                  </div>
+                  <div
+                    className={cn(
+                      "num mt-0.5 text-xl font-bold leading-none",
+                      s === "CRITICAL" && "text-status-crit",
+                      s === "HIGH" && "text-status-crit/90",
+                      s === "MEDIUM" && "text-status-warn",
+                      s === "LOW" && "text-status-info",
+                      s === "INFO" && "text-foreground/70",
+                    )}
+                  >
                     {String(counts[s]).padStart(2, "0")}
                   </div>
                 </div>
@@ -187,7 +228,10 @@ export function EventsPage() {
               className="w-56 bg-transparent text-[11.5px] outline-none placeholder:text-muted-foreground/60"
             />
             {query && (
-              <button onClick={() => setQuery("")} className="text-muted-foreground hover:text-foreground">
+              <button
+                onClick={() => setQuery("")}
+                className="text-muted-foreground hover:text-foreground"
+              >
                 <X className="h-3 w-3" />
               </button>
             )}
@@ -201,7 +245,9 @@ export function EventsPage() {
                 onClick={() => setTab(t)}
                 className={cn(
                   "px-2.5 py-1 text-[10.5px] font-medium uppercase tracking-wider transition-colors",
-                  tab === t ? "bg-primary/15 text-primary" : "bg-panel text-muted-foreground hover:bg-muted",
+                  tab === t
+                    ? "bg-primary/15 text-primary"
+                    : "bg-panel text-muted-foreground hover:bg-muted",
                 )}
               >
                 {t}
@@ -213,12 +259,16 @@ export function EventsPage() {
             <>
               <div className="mx-1 h-4 w-px bg-panel-border" />
               <div className="flex flex-wrap items-center gap-1">
-                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Source</span>
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                  Source
+                </span>
                 <button
                   onClick={() => setSourceFilter("ALL")}
                   className={cn(
                     "rounded-sm border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wider",
-                    sourceFilter === "ALL" ? "border-primary/40 bg-primary/10 text-primary" : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
+                    sourceFilter === "ALL"
+                      ? "border-primary/40 bg-primary/10 text-primary"
+                      : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
                   )}
                 >
                   All
@@ -229,7 +279,9 @@ export function EventsPage() {
                     onClick={() => setSourceFilter(s)}
                     className={cn(
                       "rounded-sm border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wider",
-                      sourceFilter === s ? "border-primary/40 bg-primary/10 text-primary" : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
+                      sourceFilter === s
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
                     )}
                   >
                     {s}
@@ -258,7 +310,9 @@ export function EventsPage() {
                     onClick={() => setLogSeverity(s)}
                     className={cn(
                       "rounded-sm border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wider",
-                      logSeverity === s ? "border-primary/40 bg-primary/10 text-primary" : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
+                      logSeverity === s
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
                     )}
                   >
                     {s}
@@ -275,7 +329,10 @@ export function EventsPage() {
           {/* Feed */}
           <Panel bodyClassName="p-0">
             {filteredAlerts.length === 0 ? (
-              <EmptyState title="No alerts match filters" description="Adjust severity, source, or search to see more." />
+              <EmptyState
+                title="No alerts match filters"
+                description="Adjust severity, source, or search to see more."
+              />
             ) : (
               <div className="max-h-[70vh] overflow-y-auto">
                 {grouped.map(([day, list]) => (
@@ -300,8 +357,15 @@ export function EventsPage() {
                               <div className={cn("w-1 shrink-0", sevAccent[a.severity])} />
                               <div className="min-w-0 flex-1 px-3 py-2.5">
                                 <div className="flex items-center gap-2">
-                                  <span className="num text-[10.5px] text-muted-foreground">{fmtTime(a.createdAt)}</span>
-                                  <StatusBadge tone={sevTone(a.severity)} size="sm" dot={false} uppercase>
+                                  <span className="num text-[10.5px] text-muted-foreground">
+                                    {fmtTime(a.createdAt)}
+                                  </span>
+                                  <StatusBadge
+                                    tone={sevTone(a.severity)}
+                                    size="sm"
+                                    dot={false}
+                                    uppercase
+                                  >
                                     {a.severity}
                                   </StatusBadge>
                                   <span className="num text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -316,8 +380,12 @@ export function EventsPage() {
                                     #{a.id.slice(-6).toUpperCase()}
                                   </span>
                                 </div>
-                                <div className="mt-1 truncate text-[12.5px] font-semibold text-foreground">{a.title}</div>
-                                <div className="mt-0.5 line-clamp-1 text-[11.5px] text-muted-foreground">{a.description}</div>
+                                <div className="mt-1 truncate text-[12.5px] font-semibold text-foreground">
+                                  {a.title}
+                                </div>
+                                <div className="mt-0.5 line-clamp-1 text-[11.5px] text-muted-foreground">
+                                  {a.description}
+                                </div>
                               </div>
                             </button>
                           </li>
@@ -335,14 +403,27 @@ export function EventsPage() {
             {selected ? (
               <div className="flex max-h-[70vh] flex-col">
                 <div className="flex items-start gap-3 border-b border-panel-border px-4 py-3">
-                  <div className={cn("mt-1 h-8 w-1 shrink-0 rounded-full", sevAccent[selected.severity])} />
+                  <div
+                    className={cn(
+                      "mt-1 h-8 w-1 shrink-0 rounded-full",
+                      sevAccent[selected.severity],
+                    )}
+                  />
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <StatusBadge tone={sevTone(selected.severity)} size="sm">{selected.severity}</StatusBadge>
-                      <span className="num text-[10px] uppercase tracking-wider text-muted-foreground">{selected.source}</span>
-                      <span className="num ml-auto text-[10px] text-muted-foreground/70">#{selected.id.slice(-6).toUpperCase()}</span>
+                      <StatusBadge tone={sevTone(selected.severity)} size="sm">
+                        {selected.severity}
+                      </StatusBadge>
+                      <span className="num text-[10px] uppercase tracking-wider text-muted-foreground">
+                        {selected.source}
+                      </span>
+                      <span className="num ml-auto text-[10px] text-muted-foreground/70">
+                        #{selected.id.slice(-6).toUpperCase()}
+                      </span>
                     </div>
-                    <h3 className="mt-1.5 text-[13.5px] font-semibold leading-snug">{selected.title}</h3>
+                    <h3 className="mt-1.5 text-[13.5px] font-semibold leading-snug">
+                      {selected.title}
+                    </h3>
                     <div className="num mt-0.5 text-[10.5px] text-muted-foreground">
                       {fmtTime(selected.createdAt)} · {relativeTime(selected.createdAt)}
                     </div>
@@ -351,29 +432,41 @@ export function EventsPage() {
 
                 <div className="flex-1 space-y-3 overflow-y-auto p-4 text-[12px] leading-relaxed">
                   <section>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Description</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Description
+                    </div>
                     <p className="mt-1 text-foreground/90">{selected.description}</p>
                   </section>
                   <section>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Suggested action</div>
-                    <p className="mt-1 rounded-sm border border-panel-border bg-panel-elevated px-2.5 py-1.5">{selected.suggestedAction}</p>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Suggested action
+                    </div>
+                    <p className="mt-1 rounded-sm border border-panel-border bg-panel-elevated px-2.5 py-1.5">
+                      {selected.suggestedAction}
+                    </p>
                   </section>
                   <section>
-                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Metadata</div>
+                    <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                      Metadata
+                    </div>
                     <dl className="mt-1 grid grid-cols-3 gap-x-2 gap-y-1 text-[11px]">
                       <dt className="text-muted-foreground">Source</dt>
                       <dd className="col-span-2 num">{selected.source}</dd>
                       <dt className="text-muted-foreground">Incident</dt>
                       <dd className="col-span-2 num">{selected.incidentId ?? "—"}</dd>
                       <dt className="text-muted-foreground">Status</dt>
-                      <dd className="col-span-2">{selected.acknowledged ? "Acknowledged" : "Open"}</dd>
+                      <dd className="col-span-2">
+                        {selected.acknowledged ? "Acknowledged" : "Open"}
+                      </dd>
                     </dl>
                   </section>
                 </div>
 
                 <div className="flex items-center gap-2 border-t border-panel-border bg-panel-elevated/60 px-3 py-2">
                   {selected.acknowledged ? (
-                    <span className="text-[11px] font-semibold uppercase tracking-widest text-status-ok/90">✓ Acknowledged</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-status-ok/90">
+                      ✓ Acknowledged
+                    </span>
                   ) : isDemo ? (
                     <CommandButton
                       kind="alert.acknowledge"
@@ -384,14 +477,20 @@ export function EventsPage() {
                       variant="primary"
                     />
                   ) : (
-                    <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">Open · read-only</span>
+                    <span className="text-[11px] font-semibold uppercase tracking-widest text-muted-foreground">
+                      Open · read-only
+                    </span>
                   )}
-                  <span className="ml-auto text-[10px] text-muted-foreground">Runtime authoritative · UI request only</span>
+                  <span className="ml-auto text-[10px] text-muted-foreground">
+                    Runtime authoritative · UI request only
+                  </span>
                 </div>
-
               </div>
             ) : (
-              <EmptyState title="No alert selected" description="Pick an alert from the feed to inspect details." />
+              <EmptyState
+                title="No alert selected"
+                description="Pick an alert from the feed to inspect details."
+              />
             )}
           </Panel>
         </div>
@@ -415,11 +514,15 @@ export function EventsPage() {
                   <tr key={e.id} className="border-b border-panel-border/60 hover:bg-muted/40">
                     <td className="num px-2 py-1 text-muted-foreground">{fmtTime(e.at)}</td>
                     <td className="px-2 py-1">
-                      <StatusBadge tone={logTone(e.severity)} size="sm">{e.severity}</StatusBadge>
+                      <StatusBadge tone={logTone(e.severity)} size="sm">
+                        {e.severity}
+                      </StatusBadge>
                     </td>
                     <td className="num px-2 py-1 text-muted-foreground">{e.component}</td>
                     <td className="px-2 py-1">{e.message}</td>
-                    <td className="num px-2 py-1 text-muted-foreground">{e.correlationId ?? "—"}</td>
+                    <td className="num px-2 py-1 text-muted-foreground">
+                      {e.correlationId ?? "—"}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -431,7 +534,10 @@ export function EventsPage() {
       {tab === "incidents" && (
         <Panel bodyClassName="p-0">
           {snap.incidents.length === 0 ? (
-            <EmptyState title="No incidents" description="No incidents recorded in the current session." />
+            <EmptyState
+              title="No incidents"
+              description="No incidents recorded in the current session."
+            />
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[900px] text-[11.5px]">
@@ -450,17 +556,32 @@ export function EventsPage() {
                   {snap.incidents.map((i) => (
                     <tr key={i.id} className="border-b border-panel-border/60">
                       <td className="px-3 py-1.5">
-                        <StatusBadge tone={sevTone(i.severity)} size="sm">{i.severity}</StatusBadge>
+                        <StatusBadge tone={sevTone(i.severity)} size="sm">
+                          {i.severity}
+                        </StatusBadge>
                       </td>
                       <td className="px-2 py-1.5">
-                        <StatusBadge tone={i.status === "RESOLVED" ? "ok" : i.status === "MITIGATED" ? "info" : "warn"} size="sm">
+                        <StatusBadge
+                          tone={
+                            i.status === "RESOLVED"
+                              ? "ok"
+                              : i.status === "MITIGATED"
+                                ? "info"
+                                : "warn"
+                          }
+                          size="sm"
+                        >
                           {i.status}
                         </StatusBadge>
                       </td>
                       <td className="px-2 py-1.5 font-medium">{i.title}</td>
                       <td className="px-2 py-1.5 text-muted-foreground">{i.impact}</td>
-                      <td className="num px-2 py-1.5 text-muted-foreground">{i.affectedComponents.join(", ")}</td>
-                      <td className="num px-2 py-1.5 text-muted-foreground">{relativeTime(i.startedAt)}</td>
+                      <td className="num px-2 py-1.5 text-muted-foreground">
+                        {i.affectedComponents.join(", ")}
+                      </td>
+                      <td className="num px-2 py-1.5 text-muted-foreground">
+                        {relativeTime(i.startedAt)}
+                      </td>
                       <td className="px-2 py-1.5 text-right">
                         {i.status !== "RESOLVED" && (
                           <CommandButton
@@ -474,7 +595,6 @@ export function EventsPage() {
                       </td>
                     </tr>
                   ))}
-
                 </tbody>
               </table>
             </div>
@@ -489,20 +609,22 @@ export function EventsPage() {
               Router live tail
             </div>
             <div className="flex flex-wrap items-center gap-1">
-              {(["ALL", "CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"] as const).map((s) => (
-                <button
-                  key={s}
-                  onClick={() => setLiveSevFilter(s as "ALL" | EventSeverity)}
-                  className={cn(
-                    "rounded-sm border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wider",
-                    liveSevFilter === s
-                      ? "border-primary/40 bg-primary/10 text-primary"
-                      : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
-                  )}
-                >
-                  {s}
-                </button>
-              ))}
+              {(["ALL", "CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG", "TRACE"] as const).map(
+                (s) => (
+                  <button
+                    key={s}
+                    onClick={() => setLiveSevFilter(s as "ALL" | EventSeverity)}
+                    className={cn(
+                      "rounded-sm border px-2 py-0.5 text-[10.5px] font-medium uppercase tracking-wider",
+                      liveSevFilter === s
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-panel-border bg-panel text-muted-foreground hover:bg-muted",
+                    )}
+                  >
+                    {s}
+                  </button>
+                ),
+              )}
             </div>
             <div className="ml-auto flex items-center gap-2">
               {livePauseState.paused && livePauseState.pending > 0 && (
@@ -515,9 +637,13 @@ export function EventsPage() {
                 className="inline-flex items-center gap-1.5 rounded-sm border border-panel-border bg-panel px-2 py-1 text-[10.5px] font-medium uppercase tracking-wider hover:bg-muted"
               >
                 {livePauseState.paused ? (
-                  <><Play className="h-3 w-3" /> Resume</>
+                  <>
+                    <Play className="h-3 w-3" /> Resume
+                  </>
                 ) : (
-                  <><Pause className="h-3 w-3" /> Pause</>
+                  <>
+                    <Pause className="h-3 w-3" /> Pause
+                  </>
                 )}
               </button>
               <button
@@ -528,10 +654,7 @@ export function EventsPage() {
               </button>
             </div>
           </div>
-          <LiveEventsVirtualList
-            events={liveEvents}
-            severityFilter={liveSevFilter}
-          />
+          <LiveEventsVirtualList events={liveEvents} severityFilter={liveSevFilter} />
         </Panel>
       )}
     </div>
@@ -548,10 +671,7 @@ function LiveEventsVirtualList({
   severityFilter: "ALL" | EventSeverity;
 }) {
   const filtered = useMemo(
-    () =>
-      severityFilter === "ALL"
-        ? events
-        : events.filter((e) => e.severity === severityFilter),
+    () => (severityFilter === "ALL" ? events : events.filter((e) => e.severity === severityFilter)),
     [events, severityFilter],
   );
 
@@ -585,9 +705,7 @@ function LiveEventsVirtualList({
         <div className="text-right">Seq</div>
       </div>
       <div ref={parentRef} className="max-h-[70vh] overflow-auto">
-        <div
-          style={{ height: virtualizer.getTotalSize(), position: "relative", minWidth: 900 }}
-        >
+        <div style={{ height: virtualizer.getTotalSize(), position: "relative", minWidth: 900 }}>
           {items.map((v) => {
             const e = filtered[v.index];
             return (
@@ -627,7 +745,14 @@ function LiveEventsVirtualList({
                   {e.source === "DEVELOPMENT_FIXTURE" ? "FIXTURE" : "RUNTIME"}
                 </div>
                 <div className="num truncate text-muted-foreground">
-                  {[e.correlationId, e.commandId, e.orderId, e.positionId, e.incidentId, e.reconciliationRunId]
+                  {[
+                    e.correlationId,
+                    e.commandId,
+                    e.orderId,
+                    e.positionId,
+                    e.incidentId,
+                    e.reconciliationRunId,
+                  ]
                     .filter(Boolean)
                     .join(" · ") || "—"}
                 </div>

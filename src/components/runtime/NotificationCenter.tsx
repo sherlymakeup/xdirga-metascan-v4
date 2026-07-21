@@ -76,7 +76,9 @@ function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
       case "unread":
         return all.filter((n) => !n.acknowledged);
       case "critical":
-        return all.filter((n) => n.decision.priority === "CRITICAL" || n.latest.severity === "CRITICAL");
+        return all.filter(
+          (n) => n.decision.priority === "CRITICAL" || n.latest.severity === "CRITICAL",
+        );
       case "fixture":
         return all.filter((n) => n.latest.source === "DEVELOPMENT_FIXTURE");
       default:
@@ -91,7 +93,9 @@ function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div className="flex items-center justify-between border-b border-panel-border px-3 py-2">
           <div className="min-w-0">
-            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">Notification Center</div>
+            <div className="text-[11px] uppercase tracking-wider text-muted-foreground">
+              Notification Center
+            </div>
             <div className="text-sm font-semibold">
               {counts.unread} unread{" "}
               <span className="text-[11px] text-muted-foreground">
@@ -122,9 +126,7 @@ function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
               key={k}
               onClick={() => setFilter(k)}
               className={`shrink-0 rounded-sm px-2 py-1 text-[11px] ${
-                filter === k
-                  ? "bg-primary/15 text-primary"
-                  : "text-muted-foreground hover:bg-muted"
+                filter === k ? "bg-primary/15 text-primary" : "text-muted-foreground hover:bg-muted"
               }`}
             >
               {label}

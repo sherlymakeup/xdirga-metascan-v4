@@ -106,11 +106,7 @@ class ConvergenceStore {
 
     if (snapshotRevision === null && latestEventRevision === null) {
       status = "UNKNOWN";
-    } else if (
-      snapshotBootId &&
-      latestEventBootId &&
-      snapshotBootId !== latestEventBootId
-    ) {
+    } else if (snapshotBootId && latestEventBootId && snapshotBootId !== latestEventBootId) {
       status = "BOOT_MISMATCH";
     } else if (snapshotRevision !== null && latestEventRevision !== null) {
       drift = latestEventRevision - snapshotRevision;

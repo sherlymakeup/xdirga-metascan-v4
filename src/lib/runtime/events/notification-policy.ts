@@ -47,8 +47,7 @@ const INFO_TYPES = new Set<RuntimeEventType>([
 ]);
 
 export function decideNotification(env: RuntimeEventEnvelope): EventNotificationDecision {
-  const critical =
-    CRITICAL_TYPES.has(env.type) || env.severity === "CRITICAL";
+  const critical = CRITICAL_TYPES.has(env.type) || env.severity === "CRITICAL";
   if (critical) {
     return {
       showToast: true,

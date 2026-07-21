@@ -52,13 +52,9 @@ describe("EventDeduplicator", () => {
   it("resets on newer bootId and rejects obsolete boot", () => {
     const d = new EventDeduplicator();
     d.evaluate(env({ eventId: "e1", sequence: 10, bootId: "boot-B" }));
-    const reset = d.evaluate(
-      env({ eventId: "e-new", sequence: 1, bootId: "boot-C" }),
-    );
+    const reset = d.evaluate(env({ eventId: "e-new", sequence: 1, bootId: "boot-C" }));
     expect(reset.action).toBe("reset-boot");
-    const obsolete = d.evaluate(
-      env({ eventId: "e-old-boot", sequence: 99, bootId: "boot-A" }),
-    );
+    const obsolete = d.evaluate(env({ eventId: "e-old-boot", sequence: 99, bootId: "boot-A" }));
     expect(obsolete.action).toBe("drop");
   });
 });

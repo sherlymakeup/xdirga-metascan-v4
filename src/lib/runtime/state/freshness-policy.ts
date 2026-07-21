@@ -80,8 +80,5 @@ export function commandsBlockedByRestriction(
   ];
   if (restriction === "ENTRIES_BLOCKED") return entryBlocked;
   // TRADING_BLOCKED — cannot place new orders/protection changes either.
-  return [
-    ...entryBlocked,
-    "position.modifyProtection",
-  ];
+  return [...entryBlocked, "position.modifyProtection"];
 }

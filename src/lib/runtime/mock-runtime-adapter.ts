@@ -473,7 +473,6 @@ export class MockRuntimeAdapter implements RuntimeAdapter {
   getScenario(): ScenarioKey {
     return this.scenario;
   }
-
 }
 
 function sleep(ms: number) {

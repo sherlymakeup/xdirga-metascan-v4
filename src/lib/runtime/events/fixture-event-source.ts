@@ -141,13 +141,20 @@ export class DevelopmentFixtureEventSource implements RuntimeEventSource {
   }
 
   emitDuplicate() {
-    const env = this.emit({ type: "broker.request.completed", severity: "INFO", payload: { latencyMs: 42 } });
+    const env = this.emit({
+      type: "broker.request.completed",
+      severity: "INFO",
+      payload: { latencyMs: 42 },
+    });
     // Re-dispatch same eventId + sequence.
     this.dispatch({ ...env, receivedAt: new Date().toISOString() });
   }
 
   emitOutOfOrder() {
-    const older = { ...this.buildEnvelope("runtime.health.changed", "INFO", {}), sequence: Math.max(1, seq - 5) };
+    const older = {
+      ...this.buildEnvelope("runtime.health.changed", "INFO", {}),
+      sequence: Math.max(1, seq - 5),
+    };
     this.dispatch(older);
   }
 
@@ -214,13 +221,30 @@ export class DevelopmentFixtureEventSource implements RuntimeEventSource {
     if (this.paused) return;
     const roll = Math.random();
     if (roll < 0.55) {
-      this.emit({ type: "broker.request.completed", severity: "INFO", payload: { latencyMs: 30 + Math.round(Math.random() * 40) } });
+      this.emit({
+        type: "broker.request.completed",
+        severity: "INFO",
+        payload: { latencyMs: 30 + Math.round(Math.random() * 40) },
+      });
     } else if (roll < 0.75) {
-      this.emit({ type: "strategy.signal.generated", severity: "DEBUG", strategyId: "trend-v2", payload: { strategyId: "trend-v2", confidence: Math.round(Math.random() * 100) / 100 } });
+      this.emit({
+        type: "strategy.signal.generated",
+        severity: "DEBUG",
+        strategyId: "trend-v2",
+        payload: { strategyId: "trend-v2", confidence: Math.round(Math.random() * 100) / 100 },
+      });
     } else if (roll < 0.88) {
-      this.emit({ type: "runtime.health.changed", severity: "INFO", payload: { subsystem: "market-data", state: "OK" } });
+      this.emit({
+        type: "runtime.health.changed",
+        severity: "INFO",
+        payload: { subsystem: "market-data", state: "OK" },
+      });
     } else if (roll < 0.95) {
-      this.emit({ type: "risk.limit.warning", severity: "WARNING", payload: { key: "daily-loss", value: 0.6, threshold: 0.75 } });
+      this.emit({
+        type: "risk.limit.warning",
+        severity: "WARNING",
+        payload: { key: "daily-loss", value: 0.6, threshold: 0.75 },
+      });
     } else {
       this.emit({
         type: "position.protection_changed",
@@ -300,7 +324,7 @@ export function scheduleFixtureManagementLifecycle(options?: {
   const src = getFixtureEventSource();
   const positionId = options?.positionId ?? "fx-pos-42";
   const symbol = options?.symbol ?? "EURUSD";
-  const entry = options?.entryPrice ?? 1.0850;
+  const entry = options?.entryPrice ?? 1.085;
   const stepMs = options?.stepMs ?? 4500;
   const planId = `plan-${Date.now().toString(36)}`;
 
@@ -354,7 +378,12 @@ export function scheduleFixtureManagementLifecycle(options?: {
       type: "position.management.action_executed",
       severity: "INFO",
       positionId,
-      payload: { positionId, planId, action: "BREAK_EVEN", detail: { appliedAt: new Date().toISOString() } },
+      payload: {
+        positionId,
+        planId,
+        action: "BREAK_EVEN",
+        detail: { appliedAt: new Date().toISOString() },
+      },
     });
   }, stepMs);
 
@@ -364,7 +393,12 @@ export function scheduleFixtureManagementLifecycle(options?: {
       type: "position.management.action_executed",
       severity: "INFO",
       positionId,
-      payload: { positionId, planId, action: "TRAILING_MOVE", detail: { newStopPrice: +(entry + 0.0012).toFixed(5) } },
+      payload: {
+        positionId,
+        planId,
+        action: "TRAILING_MOVE",
+        detail: { newStopPrice: +(entry + 0.0012).toFixed(5) },
+      },
     });
   }, stepMs * 2);
 
@@ -373,7 +407,12 @@ export function scheduleFixtureManagementLifecycle(options?: {
       type: "position.management.action_executed",
       severity: "INFO",
       positionId,
-      payload: { positionId, planId, action: "TRAILING_MOVE", detail: { newStopPrice: +(entry + 0.0024).toFixed(5) } },
+      payload: {
+        positionId,
+        planId,
+        action: "TRAILING_MOVE",
+        detail: { newStopPrice: +(entry + 0.0024).toFixed(5) },
+      },
     });
   }, stepMs * 3);
 
@@ -387,11 +426,10 @@ export function scheduleFixtureManagementLifecycle(options?: {
         positionId,
         planId,
         action: "PARTIAL_TP",
-        detail: { levelId: "tp-1", executedPrice: +(entry + 0.0030).toFixed(5), closedVolume: 0.5 },
+        detail: { levelId: "tp-1", executedPrice: +(entry + 0.003).toFixed(5), closedVolume: 0.5 },
       },
     });
   }, stepMs * 4);
 
   return { planId, positionId };
 }
-

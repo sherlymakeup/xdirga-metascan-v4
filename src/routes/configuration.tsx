@@ -29,8 +29,12 @@ function ConfigPage() {
               Runtime configuration
             </h1>
             <div className="mt-1 flex flex-wrap items-center gap-2 text-[10.5px] text-muted-foreground">
-              <StatusBadge tone="info" size="sm">READ-ONLY VIEW</StatusBadge>
-              <span>Changes are authored on the runtime host and applied via signed revisions.</span>
+              <StatusBadge tone="info" size="sm">
+                READ-ONLY VIEW
+              </StatusBadge>
+              <span>
+                Changes are authored on the runtime host and applied via signed revisions.
+              </span>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -50,7 +54,8 @@ function ConfigPage() {
               description="Applies the currently staged configuration revision to the local runtime. New strategies, symbols, and risk limits take effect immediately."
               impactSummary={
                 <>
-                  Runtime revision advances. Active strategies may reload state. Broker session is preserved.
+                  Runtime revision advances. Active strategies may reload state. Broker session is
+                  preserved.
                 </>
               }
             />
@@ -63,7 +68,8 @@ function ConfigPage() {
               description="Reverts the runtime configuration to the previously applied revision."
               impactSummary={
                 <>
-                  Rolling back will re-load the last known-good configuration. In-flight strategy state may reset.
+                  Rolling back will re-load the last known-good configuration. In-flight strategy
+                  state may reset.
                 </>
               }
               confirmPhrase="ROLLBACK"
@@ -71,7 +77,6 @@ function ConfigPage() {
           </div>
         </div>
       </Panel>
-
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Panel title="Runtime" subtitle="Read-only from the backing runtime">
@@ -107,38 +112,40 @@ function ConfigPage() {
 
       <Panel title="Symbols" subtitle={`${snap.markets.length} configured`} bodyClassName="p-0">
         <div className="overflow-x-auto">
-        <table className="w-full min-w-[720px] text-[11.5px]">
-          <thead className="border-b border-panel-border bg-panel-elevated text-[10px] uppercase tracking-wider text-muted-foreground">
-            <tr>
-              <th className="px-3 py-1.5 text-left">Symbol</th>
-              <th className="px-2 py-1.5 text-left">Group</th>
-              <th className="px-2 py-1.5 text-right">Contract</th>
-              <th className="px-2 py-1.5 text-right">Tick</th>
-              <th className="px-2 py-1.5 text-right">Vol step</th>
-              <th className="px-2 py-1.5 text-right">Min / Max</th>
-              <th className="px-2 py-1.5 text-right">Margin</th>
-              <th className="px-2 py-1.5 text-left">Session</th>
-            </tr>
-          </thead>
-          <tbody>
-            {snap.markets.map((m) => (
-              <tr key={m.symbol} className="border-b border-panel-border/60">
-                <td className="num px-3 py-1.5 font-semibold">{m.symbol}</td>
-                <td className="px-2 py-1.5 text-muted-foreground">{m.group}</td>
-                <td className="num px-2 py-1.5 text-right">{m.contractSize.toLocaleString()}</td>
-                <td className="num px-2 py-1.5 text-right">{m.tickSize}</td>
-                <td className="num px-2 py-1.5 text-right">{m.volumeStep}</td>
-                <td className="num px-2 py-1.5 text-right">{m.minVolume} / {m.maxVolume}</td>
-                <td className="num px-2 py-1.5 text-right">{m.marginRequirement}</td>
-                <td className="px-2 py-1.5">
-                  <StatusBadge tone={m.sessionOpen ? "ok" : "neutral"} size="sm">
-                    {m.sessionOpen ? "OPEN" : "CLOSED"}
-                  </StatusBadge>
-                </td>
+          <table className="w-full min-w-[720px] text-[11.5px]">
+            <thead className="border-b border-panel-border bg-panel-elevated text-[10px] uppercase tracking-wider text-muted-foreground">
+              <tr>
+                <th className="px-3 py-1.5 text-left">Symbol</th>
+                <th className="px-2 py-1.5 text-left">Group</th>
+                <th className="px-2 py-1.5 text-right">Contract</th>
+                <th className="px-2 py-1.5 text-right">Tick</th>
+                <th className="px-2 py-1.5 text-right">Vol step</th>
+                <th className="px-2 py-1.5 text-right">Min / Max</th>
+                <th className="px-2 py-1.5 text-right">Margin</th>
+                <th className="px-2 py-1.5 text-left">Session</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {snap.markets.map((m) => (
+                <tr key={m.symbol} className="border-b border-panel-border/60">
+                  <td className="num px-3 py-1.5 font-semibold">{m.symbol}</td>
+                  <td className="px-2 py-1.5 text-muted-foreground">{m.group}</td>
+                  <td className="num px-2 py-1.5 text-right">{m.contractSize.toLocaleString()}</td>
+                  <td className="num px-2 py-1.5 text-right">{m.tickSize}</td>
+                  <td className="num px-2 py-1.5 text-right">{m.volumeStep}</td>
+                  <td className="num px-2 py-1.5 text-right">
+                    {m.minVolume} / {m.maxVolume}
+                  </td>
+                  <td className="num px-2 py-1.5 text-right">{m.marginRequirement}</td>
+                  <td className="px-2 py-1.5">
+                    <StatusBadge tone={m.sessionOpen ? "ok" : "neutral"} size="sm">
+                      {m.sessionOpen ? "OPEN" : "CLOSED"}
+                    </StatusBadge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </Panel>
     </div>
@@ -149,7 +156,10 @@ function KVList({ rows }: { rows: Array<[string, string]> }) {
   return (
     <dl className="grid grid-cols-2 gap-y-1 text-[11.5px]">
       {rows.map(([k, v]) => (
-        <div key={k} className="col-span-2 flex justify-between border-b border-panel-border/50 py-1">
+        <div
+          key={k}
+          className="col-span-2 flex justify-between border-b border-panel-border/50 py-1"
+        >
           <dt className="text-muted-foreground">{k}</dt>
           <dd className="num text-right">{v}</dd>
         </div>

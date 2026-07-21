@@ -12,11 +12,7 @@ import type {
 
 type Cap = Omit<CommandCapability, "command">;
 
-function cap(
-  allowed: boolean,
-  riskLevel: 1 | 2 | 3 | 4,
-  opts: Partial<Cap> = {},
-): Cap {
+function cap(allowed: boolean, riskLevel: 1 | 2 | 3 | 4, opts: Partial<Cap> = {}): Cap {
   return {
     allowed,
     riskLevel,
@@ -49,7 +45,9 @@ export function buildCapabilities(
     "runtime.reconnectBroker": !brokerUp
       ? cap(true, 2)
       : cap(true, 2, { requiresReason: false, requiresTypedConfirmation: false }),
-    "runtime.reconcile": isRunning ? cap(true, 2) : cap(false, 2, blocked("Runtime must be running")),
+    "runtime.reconcile": isRunning
+      ? cap(true, 2)
+      : cap(false, 2, blocked("Runtime must be running")),
     "runtime.disableEntries": snap.runtime.entriesEnabled
       ? cap(true, 2)
       : cap(false, 2, blocked("Entries already disabled")),
@@ -61,8 +59,12 @@ export function buildCapabilities(
       : cap(false, 4, blocked("Runtime already stopped")),
 
     "strategy.pause": canOperate ? cap(true, 2) : cap(false, 2, blocked("Runtime not operational")),
-    "strategy.resume": canOperate ? cap(true, 2) : cap(false, 2, blocked("Runtime not operational")),
-    "strategy.disable": canOperate ? cap(true, 3) : cap(false, 3, blocked("Runtime not operational")),
+    "strategy.resume": canOperate
+      ? cap(true, 2)
+      : cap(false, 2, blocked("Runtime not operational")),
+    "strategy.disable": canOperate
+      ? cap(true, 3)
+      : cap(false, 3, blocked("Runtime not operational")),
 
     "order.cancel": canOperate ? cap(true, 2) : cap(false, 2, blocked("Broker offline")),
     "order.cancelAll": canOperate
@@ -71,7 +73,9 @@ export function buildCapabilities(
 
     "position.close": canOperate ? cap(true, 3) : cap(false, 3, blocked("Broker offline")),
     "position.closePartial": canOperate ? cap(true, 3) : cap(false, 3, blocked("Broker offline")),
-    "position.modifyProtection": canOperate ? cap(true, 3) : cap(false, 3, blocked("Broker offline")),
+    "position.modifyProtection": canOperate
+      ? cap(true, 3)
+      : cap(false, 3, blocked("Broker offline")),
     "position.closeAll": canOperate
       ? cap(true, 4, { confirmationPhrase: "CLOSE ALL POSITIONS" })
       : cap(false, 4, blocked("Broker offline")),

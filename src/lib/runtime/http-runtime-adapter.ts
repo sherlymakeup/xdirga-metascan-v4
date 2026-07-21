@@ -170,7 +170,10 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   private setHandshake(h: RuntimeHandshake | null) {
     if (h && this.handshake && h.bootId !== this.handshake.bootId) {
       this.lastSequence = 0;
-      this.envelope = { ...this.envelope, metadata: { ...this.envelope.metadata, revision: 0, sequence: 0 } };
+      this.envelope = {
+        ...this.envelope,
+        metadata: { ...this.envelope.metadata, revision: 0, sequence: 0 },
+      };
       this.dedup.reset();
       this.hasValidatedSnapshot = false;
     }
@@ -192,18 +195,23 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     const env = validated.snapshot as RuntimeSnapshotEnvelope;
     const { metadata } = env;
     if (
-      metadata.runtimeId !== this.handshake.runtimeId || metadata.bootId !== this.handshake.bootId ||
-      env.snapshot.runtime.id !== this.handshake.runtimeId || metadata.protocolId !== this.handshake.protocolId ||
-      metadata.protocolVersion !== this.handshake.protocolVersion || metadata.schemaVersion !== this.handshake.schemaVersion ||
-      metadata.schemaHash !== this.handshake.schemaHash || metadata.revision < this.envelope.metadata.revision ||
+      metadata.runtimeId !== this.handshake.runtimeId ||
+      metadata.bootId !== this.handshake.bootId ||
+      env.snapshot.runtime.id !== this.handshake.runtimeId ||
+      metadata.protocolId !== this.handshake.protocolId ||
+      metadata.protocolVersion !== this.handshake.protocolVersion ||
+      metadata.schemaVersion !== this.handshake.schemaVersion ||
+      metadata.schemaHash !== this.handshake.schemaHash ||
+      metadata.revision < this.envelope.metadata.revision ||
       metadata.sequence < this.lastSequence
-    ) return null;
+    )
+      return null;
     return env;
   }
 
   private acceptHandshake(raw: unknown): RuntimeHandshake | null {
     const validated = validateHandshake(raw);
-    return validated.ok ? validated.handshake as RuntimeHandshake : null;
+    return validated.ok ? (validated.handshake as RuntimeHandshake) : null;
   }
 
   private applyCapabilities(caps: RuntimeCapabilities) {
@@ -384,7 +392,12 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     const validated = validateEnvelope(parsed);
     if (!validated.ok || !validated.envelope) return;
     const env = validated.envelope;
-    if (!this.handshake || env.runtimeId !== this.handshake.runtimeId || env.bootId !== this.handshake.bootId || env.revision < this.envelope.metadata.revision) {
+    if (
+      !this.handshake ||
+      env.runtimeId !== this.handshake.runtimeId ||
+      env.bootId !== this.handshake.bootId ||
+      env.revision < this.envelope.metadata.revision
+    ) {
       await this.resyncSnapshot(generation);
       return;
     }
@@ -457,9 +470,15 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       const snapshot = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (!snapshot) throw new Error("Invalid or stale snapshot response.");
       this.applySnapshot(snapshot);
-      this.setConnection({ state: "CONNECTED", dataAgeMs: 0, errorMessage: undefined, errorCode: undefined });
+      this.setConnection({
+        state: "CONNECTED",
+        dataAgeMs: 0,
+        errorMessage: undefined,
+        errorCode: undefined,
+      });
       this.observeClientActivity();
-      if (shouldReopen) this.openEventSource(snapshot.metadata.bootId, snapshot.metadata.sequence, generation);
+      if (shouldReopen)
+        this.openEventSource(snapshot.metadata.bootId, snapshot.metadata.sequence, generation);
     } catch {
       this.setConnection({ state: "RECONNECTING", errorMessage: "Snapshot recovery failed." });
       this.scheduleReconnect(generation);

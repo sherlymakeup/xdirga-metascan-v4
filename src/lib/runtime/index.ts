@@ -99,7 +99,10 @@ export function useHasValidatedSnapshot(): boolean {
 }
 
 function getHasValidatedSnapshot(a: RuntimeAdapter): boolean {
-  if ("hasValidatedSnapshotPublished" in a && typeof a.hasValidatedSnapshotPublished === "function") {
+  if (
+    "hasValidatedSnapshotPublished" in a &&
+    typeof a.hasValidatedSnapshotPublished === "function"
+  ) {
     return a.hasValidatedSnapshotPublished();
   }
   return true;

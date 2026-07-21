@@ -10,11 +10,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import {
-  useCommandCounts,
-  useCommandStore,
-  type RuntimeCommandStatus,
-} from "@/lib/runtime";
+import { useCommandCounts, useCommandStore, type RuntimeCommandStatus } from "@/lib/runtime";
 import { StatusBadge, type StatusTone } from "@/components/cockpit/status-badge";
 import { relativeTime } from "@/lib/format";
 
@@ -51,7 +47,13 @@ export function CommandCenterButton() {
   const counts = useCommandCounts();
 
   const alertTone =
-    counts.unknown > 0 ? "crit" : counts.failed > 0 ? "crit" : counts.active > 0 ? "info" : "neutral";
+    counts.unknown > 0
+      ? "crit"
+      : counts.failed > 0
+        ? "crit"
+        : counts.active > 0
+          ? "info"
+          : "neutral";
   const total = counts.active + counts.failed + counts.unknown;
 
   return (
@@ -116,7 +118,7 @@ function CommandDrawer({ open, onClose }: { open: boolean; onClose: () => void }
     return true;
   });
 
-  const active = selected ? commands.find((c) => c.commandId === selected) ?? null : null;
+  const active = selected ? (commands.find((c) => c.commandId === selected) ?? null) : null;
 
   return (
     <div
@@ -153,11 +155,36 @@ function CommandDrawer({ open, onClose }: { open: boolean; onClose: () => void }
         </header>
 
         <div className="flex items-center gap-1 border-b border-panel-border/70 px-2 py-1.5 text-[10.5px]">
-          <FilterChip label={`Active ${counts.active}`} tone="info" active={filter === "active"} onClick={() => setFilter("active")} />
-          <FilterChip label={`Unknown ${counts.unknown}`} tone="crit" active={filter === "unknown"} onClick={() => setFilter("unknown")} />
-          <FilterChip label={`Failed ${counts.failed}`} tone="crit" active={filter === "failed"} onClick={() => setFilter("failed")} />
-          <FilterChip label={`Done ${counts.completed}`} tone="ok" active={filter === "completed"} onClick={() => setFilter("completed")} />
-          <FilterChip label="All" tone="neutral" active={filter === "all"} onClick={() => setFilter("all")} />
+          <FilterChip
+            label={`Active ${counts.active}`}
+            tone="info"
+            active={filter === "active"}
+            onClick={() => setFilter("active")}
+          />
+          <FilterChip
+            label={`Unknown ${counts.unknown}`}
+            tone="crit"
+            active={filter === "unknown"}
+            onClick={() => setFilter("unknown")}
+          />
+          <FilterChip
+            label={`Failed ${counts.failed}`}
+            tone="crit"
+            active={filter === "failed"}
+            onClick={() => setFilter("failed")}
+          />
+          <FilterChip
+            label={`Done ${counts.completed}`}
+            tone="ok"
+            active={filter === "completed"}
+            onClick={() => setFilter("completed")}
+          />
+          <FilterChip
+            label="All"
+            tone="neutral"
+            active={filter === "all"}
+            onClick={() => setFilter("all")}
+          />
         </div>
 
         <div className="flex min-h-0 flex-1">
@@ -182,7 +209,9 @@ function CommandDrawer({ open, onClose }: { open: boolean; onClose: () => void }
                   </div>
                   <div className="mt-0.5 flex items-center justify-between gap-2 text-[10.5px] text-muted-foreground">
                     <span className="truncate">{c.targetId ?? "—"}</span>
-                    <StatusBadge tone={stateTone[c.state]} size="sm">{stateLabel[c.state]}</StatusBadge>
+                    <StatusBadge tone={stateTone[c.state]} size="sm">
+                      {stateLabel[c.state]}
+                    </StatusBadge>
                   </div>
                   {c.currentStep && (
                     <div className="mt-0.5 truncate text-[10.5px] text-muted-foreground">
@@ -195,7 +224,9 @@ function CommandDrawer({ open, onClose }: { open: boolean; onClose: () => void }
           </ul>
 
           <div className="min-w-0 flex-1 overflow-y-auto">
-            {active ? <CommandDetail cmd={active} /> : (
+            {active ? (
+              <CommandDetail cmd={active} />
+            ) : (
               <div className="grid h-full place-items-center p-6 text-center text-[11.5px] text-muted-foreground">
                 Select a command to inspect its lifecycle.
               </div>
@@ -235,7 +266,8 @@ function FilterChip({
 
 function StateIcon({ state }: { state: RuntimeCommandStatus["state"] }) {
   if (state === "COMPLETED") return <CheckCircle2 className="h-3.5 w-3.5 text-status-ok" />;
-  if (state === "FAILED" || state === "TIMED_OUT") return <XCircle className="h-3.5 w-3.5 text-status-crit" />;
+  if (state === "FAILED" || state === "TIMED_OUT")
+    return <XCircle className="h-3.5 w-3.5 text-status-crit" />;
   if (state === "EXECUTION_UNKNOWN") return <HelpCircle className="h-3.5 w-3.5 text-status-crit" />;
   if (state === "CANCELLED") return <Clock className="h-3.5 w-3.5 text-muted-foreground" />;
   return <Loader2 className="h-3.5 w-3.5 animate-spin text-status-info" />;
@@ -248,7 +280,9 @@ function CommandDetail({ cmd }: { cmd: RuntimeCommandStatus }) {
         <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Command</div>
         <div className="mt-0.5 font-semibold">{cmd.kind}</div>
         <div className="mt-1">
-          <StatusBadge tone={stateTone[cmd.state]} size="sm">{stateLabel[cmd.state]}</StatusBadge>
+          <StatusBadge tone={stateTone[cmd.state]} size="sm">
+            {stateLabel[cmd.state]}
+          </StatusBadge>
         </div>
       </div>
 
@@ -258,22 +292,26 @@ function CommandDetail({ cmd }: { cmd: RuntimeCommandStatus }) {
             <AlertOctagon className="h-3.5 w-3.5" /> Execution result is unknown
           </div>
           <p className="mt-1 text-status-crit/90">
-            The broker may have accepted or completed this operation. Do not retry until reconciliation
-            confirms the actual broker state.
+            The broker may have accepted or completed this operation. Do not retry until
+            reconciliation confirms the actual broker state.
           </p>
         </div>
       )}
 
       {cmd.currentStep && (
         <div>
-          <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Current step</div>
+          <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+            Current step
+          </div>
           <div>{cmd.currentStep}</div>
         </div>
       )}
 
       {cmd.reason && (
         <div>
-          <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Operator reason</div>
+          <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">
+            Operator reason
+          </div>
           <div>{cmd.reason}</div>
         </div>
       )}
@@ -282,7 +320,9 @@ function CommandDetail({ cmd }: { cmd: RuntimeCommandStatus }) {
         <div>
           <div className="text-[10.5px] uppercase tracking-wider text-muted-foreground">Error</div>
           <div className="text-status-crit">{cmd.errorMessage}</div>
-          {cmd.errorCode && <div className="num text-[10.5px] text-muted-foreground">{cmd.errorCode}</div>}
+          {cmd.errorCode && (
+            <div className="num text-[10.5px] text-muted-foreground">{cmd.errorCode}</div>
+          )}
         </div>
       )}
 

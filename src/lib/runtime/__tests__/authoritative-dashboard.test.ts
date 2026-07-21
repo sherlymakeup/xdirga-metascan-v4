@@ -61,9 +61,8 @@ describe("authoritative dashboard UI", () => {
     expect(route).toContain('positionsObservedAt ? fmtDateTime(positionsObservedAt) : "N/A"');
     expect(route).toContain('stale ? "" : p.floatingPnl >= 0 ? "text-profit" : "text-loss"');
     expect(route).toContain("const positionsAvailable = snap.positionsAvailable");
-    expect(route).toContain(
-      'snap.positions.length > 0 && snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable)',
-    );
+    expect(route).toContain("snap.positions.length > 0 &&");
+    expect(route).toContain('snap.positions.every((p) => p.ownership === "BOT_MANAGED" && p.dataAvailable)');
   });
 
   it("keeps legacy acknowledgement controls fixture-only", () => {

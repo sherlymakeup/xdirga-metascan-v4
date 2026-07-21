@@ -53,7 +53,9 @@ export function StatusBadge({
       )}
     >
       {dot && !icon && (
-        <span className={cn("h-1.5 w-1.5 rounded-full", dotClasses[tone], pulse && "animate-pulse")} />
+        <span
+          className={cn("h-1.5 w-1.5 rounded-full", dotClasses[tone], pulse && "animate-pulse")}
+        />
       )}
       {icon}
       <span className="whitespace-nowrap">{children}</span>

@@ -66,7 +66,10 @@ export function FixtureDiagnosticsPanel() {
         <Diag k="Source" v={conn.mode} />
         <Diag k="Connection" v={conn.state} />
         <Diag k="Hydration" v={hydration.state} />
-        <Diag k="Handshake" v={handshake ? `${handshake.protocolId}@${handshake.protocolVersion}` : "—"} />
+        <Diag
+          k="Handshake"
+          v={handshake ? `${handshake.protocolId}@${handshake.protocolVersion}` : "—"}
+        />
         <Diag k="Boot ID" v={handshake?.bootId ?? "—"} />
         <Diag k="Cap. revision" v={String(handshake?.capabilitiesRevision ?? "—")} />
         <Diag k="Cmd active" v={String(counts.active)} />

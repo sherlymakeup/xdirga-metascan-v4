@@ -7,7 +7,10 @@ export type DedupOutcome =
   | { action: "accept" }
   | { action: "gap"; missing: number; from: number; to: number }
   | { action: "reset-boot"; previousBootId: string; newBootId: string }
-  | { action: "drop"; reason: "duplicate-id" | "duplicate-sequence" | "older-sequence" | "obsolete-boot" };
+  | {
+      action: "drop";
+      reason: "duplicate-id" | "duplicate-sequence" | "older-sequence" | "obsolete-boot";
+    };
 
 interface RuntimeCursor {
   runtimeId: string;

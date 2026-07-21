@@ -31,7 +31,11 @@ function StrategiesPage() {
   const snap = useSnapshot();
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
-      <Panel title="Strategies" subtitle={`${snap.strategies.length} configured`} bodyClassName="p-0">
+      <Panel
+        title="Strategies"
+        subtitle={`${snap.strategies.length} configured`}
+        bodyClassName="p-0"
+      >
         <div className="overflow-x-auto">
           <table className="w-full text-[11.5px]">
             <thead className="border-b border-panel-border bg-panel-elevated text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -85,7 +89,9 @@ function StrategyRow({ s }: { s: Strategy }) {
       <td className="num px-2 py-1.5">{s.symbols.join(", ")}</td>
       <td className="num px-2 py-1.5">{s.timeframe}</td>
       <td className="px-2 py-1.5">
-        <StatusBadge tone={statusTone[s.status]} size="sm">{s.status}</StatusBadge>
+        <StatusBadge tone={statusTone[s.status]} size="sm">
+          {s.status}
+        </StatusBadge>
       </td>
       <td className="px-2 py-1.5">
         <StatusBadge tone={s.tradingMode === "LIVE" ? "crit" : "info"} size="sm">
@@ -102,7 +108,10 @@ function StrategyRow({ s }: { s: Strategy }) {
         {s.lastSignalAt ? relativeTime(s.lastSignalAt) : "—"}
       </td>
       <td className="px-2 py-1.5">
-        <StatusBadge tone={s.health === "OK" ? "ok" : s.health === "DEGRADED" ? "warn" : "crit"} size="sm">
+        <StatusBadge
+          tone={s.health === "OK" ? "ok" : s.health === "DEGRADED" ? "warn" : "crit"}
+          size="sm"
+        >
           {s.health}
         </StatusBadge>
       </td>
@@ -137,7 +146,9 @@ function StrategyRow({ s }: { s: Strategy }) {
             description="Strategy is removed from the runtime rotation until re-enabled."
             impactSummary={
               <ul className="space-y-0.5">
-                <li>Allocation freed: <span className="num">{s.allocationPct}%</span></li>
+                <li>
+                  Allocation freed: <span className="num">{s.allocationPct}%</span>
+                </li>
                 <li>Open positions are NOT auto-closed.</li>
               </ul>
             }
@@ -147,7 +158,6 @@ function StrategyRow({ s }: { s: Strategy }) {
     </tr>
   );
 }
-
 
 function SignalCard() {
   const rows: Array<[string, string, StatusTone?]> = [
@@ -166,7 +176,13 @@ function SignalCard() {
         <div key={k} className="flex justify-between border-b border-panel-border/50 py-1">
           <dt className="text-muted-foreground">{k}</dt>
           <dd className="num">
-            {tone ? <StatusBadge tone={tone} size="sm">{v}</StatusBadge> : v}
+            {tone ? (
+              <StatusBadge tone={tone} size="sm">
+                {v}
+              </StatusBadge>
+            ) : (
+              v
+            )}
           </dd>
         </div>
       ))}
@@ -191,7 +207,9 @@ function DecisionTrace() {
       {steps.map(([label, detail, tone], i) => (
         <li key={label} className="flex items-start gap-2 text-[11.5px]">
           <span className="num mt-0.5 w-4 shrink-0 text-right text-muted-foreground">{i + 1}</span>
-          <StatusBadge tone={tone} size="sm">✓</StatusBadge>
+          <StatusBadge tone={tone} size="sm">
+            ✓
+          </StatusBadge>
           <div className="min-w-0 flex-1">
             <div className="font-medium">{label}</div>
             <div className="num text-[11px] text-muted-foreground">{detail}</div>

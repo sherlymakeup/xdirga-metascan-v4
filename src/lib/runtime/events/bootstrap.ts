@@ -97,6 +97,7 @@ export function teardownEventPipeline() {
   }
   unsubscribers.length = 0;
   bootstrapped = false;
-  getFixtureEventSource().stop().catch(() => {});
+  getFixtureEventSource()
+    .stop()
+    .catch(() => {});
 }
-

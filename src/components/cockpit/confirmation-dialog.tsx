@@ -1,6 +1,13 @@
 import { useEffect, useState } from "react";
 import { AlertOctagon, Loader2, Minimize2, ShieldAlert } from "lucide-react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -34,7 +41,9 @@ interface Props {
   confirmLabel?: string;
   requireReason?: boolean;
   reasonPlaceholder?: string;
-  onConfirm: (reason: string) => Promise<ConfirmationSubmitResult | void> | ConfirmationSubmitResult | void;
+  onConfirm: (
+    reason: string,
+  ) => Promise<ConfirmationSubmitResult | void> | ConfirmationSubmitResult | void;
   destructive?: boolean;
   /** Live command status for the in-flight submission (post-accept). */
   commandStatus?: RuntimeCommandStatus | null;
@@ -145,10 +154,16 @@ export function ConfirmationDialog({
               destructive && "text-status-crit",
             )}
           >
-            {destructive ? <AlertOctagon className="h-4 w-4" /> : <ShieldAlert className="h-4 w-4" />}
+            {destructive ? (
+              <AlertOctagon className="h-4 w-4" />
+            ) : (
+              <ShieldAlert className="h-4 w-4" />
+            )}
             {title}
           </DialogTitle>
-          <DialogDescription className="text-xs text-muted-foreground">{description}</DialogDescription>
+          <DialogDescription className="text-xs text-muted-foreground">
+            {description}
+          </DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3 p-4">
@@ -163,8 +178,8 @@ export function ConfirmationDialog({
 
           {level === 4 && (
             <div className="rounded-sm border border-status-crit/40 bg-status-crit/10 p-2.5 text-[11.5px] text-status-crit">
-              <strong>Irreversible action.</strong> This will affect live runtime state. An audit event will be
-              created.
+              <strong>Irreversible action.</strong> This will affect live runtime state. An audit
+              event will be created.
             </div>
           )}
 
@@ -217,8 +232,8 @@ export function ConfirmationDialog({
               )}
               {commandStatus?.state === "EXECUTION_UNKNOWN" && (
                 <div className="mt-2 rounded-sm border border-status-warn/40 bg-status-warn/10 p-2 text-[11px] text-status-warn">
-                  Broker execution is undetermined. Retries are locked on this entity until reconciliation
-                  resolves the outcome.
+                  Broker execution is undetermined. Retries are locked on this entity until
+                  reconciliation resolves the outcome.
                 </div>
               )}
             </div>
@@ -305,7 +320,9 @@ function LifecycleProgress({ status }: { status: RuntimeCommandStatus | null }) 
   ];
   const currentIdx = status ? order.indexOf(status.state) : 0;
   const failed =
-    status?.state === "FAILED" || status?.state === "TIMED_OUT" || status?.state === "EXECUTION_UNKNOWN";
+    status?.state === "FAILED" ||
+    status?.state === "TIMED_OUT" ||
+    status?.state === "EXECUTION_UNKNOWN";
 
   return (
     <ul className="space-y-1">

@@ -62,11 +62,20 @@ export function SchemaMismatchBanner() {
                   Frontend expects
                 </div>
                 <dl className="num mt-1 space-y-0.5">
-                  <FieldRow label="Protocol" value={`${expected.protocolId} ${expected.protocolVersion}`} />
+                  <FieldRow
+                    label="Protocol"
+                    value={`${expected.protocolId} ${expected.protocolVersion}`}
+                  />
                   <FieldRow label="Schema" value={`${expected.schemaVersion}`} />
                   <FieldRow label="Min runtime" value={expected.minRuntimeVersion} />
-                  <FieldRow label="Features" value={`${expected.requiredFeatures.length} required`} />
-                  <FieldRow label="Commands" value={`${expected.requiredCommands.length} required`} />
+                  <FieldRow
+                    label="Features"
+                    value={`${expected.requiredFeatures.length} required`}
+                  />
+                  <FieldRow
+                    label="Commands"
+                    value={`${expected.requiredCommands.length} required`}
+                  />
                 </dl>
               </div>
               <div className="rounded-sm border border-current/25 bg-current/[0.06] p-2">
@@ -75,8 +84,14 @@ export function SchemaMismatchBanner() {
                 </div>
                 {actual ? (
                   <dl className="num mt-1 space-y-0.5">
-                    <FieldRow label="Runtime" value={`${actual.runtimeName} ${actual.runtimeVersion}`} />
-                    <FieldRow label="Protocol" value={`${actual.protocolId} ${actual.protocolVersion}`} />
+                    <FieldRow
+                      label="Runtime"
+                      value={`${actual.runtimeName} ${actual.runtimeVersion}`}
+                    />
+                    <FieldRow
+                      label="Protocol"
+                      value={`${actual.protocolId} ${actual.protocolVersion}`}
+                    />
                     <FieldRow label="Schema" value={`${actual.schemaVersion}`} />
                     <FieldRow label="Schema hash" value={truncateHash(actual.schemaHash)} />
                     <FieldRow label="Broker env" value={actual.brokerEnvironment ?? "—"} />

@@ -11,7 +11,11 @@ import {
   useSnapshot,
 } from "../index";
 import type { RuntimeCommandKind } from "../runtime-types";
-import { classifyFreshness, commandsBlockedByRestriction, restrictionFor } from "./freshness-policy";
+import {
+  classifyFreshness,
+  commandsBlockedByRestriction,
+  restrictionFor,
+} from "./freshness-policy";
 import { useExecutionUnknownLocks } from "./execution-unknown-lock";
 import { useReconciliationRestriction } from "./reconciliation-restrictions";
 
@@ -39,7 +43,10 @@ const SEVERITY: Record<GlobalOperationalStateKind, number> = {
   SAFE_MODE: 5,
 };
 
-function worse(a: GlobalOperationalStateKind, b: GlobalOperationalStateKind): GlobalOperationalStateKind {
+function worse(
+  a: GlobalOperationalStateKind,
+  b: GlobalOperationalStateKind,
+): GlobalOperationalStateKind {
   return SEVERITY[a] >= SEVERITY[b] ? a : b;
 }
 
@@ -87,7 +94,12 @@ export function useGlobalOperationalState(): GlobalOperationalState {
     if (rs === "KILLED" || rs === "STOPPED" || rs === "ERROR") {
       state = worse(state, "BLOCKED");
       reasons.push(`Runtime is ${rs}.`);
-    } else if (rs === "PAUSED" || rs === "DEGRADED" || rs === "RECONCILING" || rs === "RECONNECTING") {
+    } else if (
+      rs === "PAUSED" ||
+      rs === "DEGRADED" ||
+      rs === "RECONCILING" ||
+      rs === "RECONNECTING"
+    ) {
       state = worse(state, "DEGRADED");
       reasons.push(`Runtime is ${rs}.`);
     }

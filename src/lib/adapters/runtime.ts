@@ -37,7 +37,14 @@ export type RuntimeCommand =
   | { kind: "alert.acknowledge"; id: string };
 
 export interface CommandResult {
-  status: "COMMAND_PREPARED" | "COMMAND_SENT" | "RUNTIME_ACK" | "COMPLETED" | "FAILED" | "TIMED_OUT" | "UNKNOWN";
+  status:
+    | "COMMAND_PREPARED"
+    | "COMMAND_SENT"
+    | "RUNTIME_ACK"
+    | "COMPLETED"
+    | "FAILED"
+    | "TIMED_OUT"
+    | "UNKNOWN";
   message: string;
   correlationId: string;
 }
@@ -51,7 +58,9 @@ async function sendCommand(command: RuntimeCommand): Promise<CommandResult> {
   const { kind } = command;
   const anyCmd = command as Record<string, unknown>;
   const { commandId } = await submitRuntimeCommand(kind as RuntimeCommandKind, {
-    targetId: (anyCmd.positionId ?? anyCmd.orderId ?? anyCmd.id ?? anyCmd.key) as string | undefined,
+    targetId: (anyCmd.positionId ?? anyCmd.orderId ?? anyCmd.id ?? anyCmd.key) as
+      | string
+      | undefined,
     reason: anyCmd.reason as string | undefined,
     parameters: anyCmd.steps ? { steps: anyCmd.steps } : undefined,
   });

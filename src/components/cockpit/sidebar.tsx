@@ -28,7 +28,9 @@ interface NavItem {
   to: string;
   label: string;
   icon: typeof Compass;
-  badge?: (snap: ReturnType<typeof useSnapshot>) => { tone: "ok" | "info" | "warn" | "crit" | "neutral" | "strategy"; count: number } | null;
+  badge?: (
+    snap: ReturnType<typeof useSnapshot>,
+  ) => { tone: "ok" | "info" | "warn" | "crit" | "neutral" | "strategy"; count: number } | null;
 }
 
 const items: NavItem[] = [
@@ -40,7 +42,9 @@ const items: NavItem[] = [
     label: "Orders",
     icon: ClipboardList,
     badge: (s) => {
-      const c = s.orders.filter((o) => o.status === "REJECTED" || o.status === "EXECUTION_UNKNOWN").length;
+      const c = s.orders.filter(
+        (o) => o.status === "REJECTED" || o.status === "EXECUTION_UNKNOWN",
+      ).length;
       return c > 0 ? { tone: "crit", count: c } : null;
     },
   },
@@ -69,7 +73,9 @@ const items: NavItem[] = [
     label: "Events & Logs",
     icon: FileClock,
     badge: (s) => {
-      const c = s.alerts.filter((a) => !a.acknowledged && (a.severity === "CRITICAL" || a.severity === "HIGH")).length;
+      const c = s.alerts.filter(
+        (a) => !a.acknowledged && (a.severity === "CRITICAL" || a.severity === "HIGH"),
+      ).length;
       return c > 0 ? { tone: "crit", count: c } : null;
     },
   },
@@ -77,7 +83,13 @@ const items: NavItem[] = [
   { to: "/system", label: "System", icon: TerminalSquare },
 ];
 
-function SidebarNavList({ collapsed, onNavigate }: { collapsed?: boolean; onNavigate?: () => void }) {
+function SidebarNavList({
+  collapsed,
+  onNavigate,
+}: {
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
   const snap = useSnapshot();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
@@ -124,7 +136,9 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
   const snap = useSnapshot();
   const env = useBrokerEnvironment();
   return (
-    <div className={cn("border-t border-panel-border px-3 py-2.5 text-[11px]", collapsed && "px-2")}>
+    <div
+      className={cn("border-t border-panel-border px-3 py-2.5 text-[11px]", collapsed && "px-2")}
+    >
       {!collapsed ? (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
@@ -133,7 +147,10 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
           </div>
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Data source</span>
-            <StatusBadge tone={env.frontendDataSource === "LOCAL_RUNTIME" ? "ok" : "warn"} size="sm">
+            <StatusBadge
+              tone={env.frontendDataSource === "LOCAL_RUNTIME" ? "ok" : "warn"}
+              size="sm"
+            >
               {env.frontendDataSource === "LOCAL_RUNTIME" ? "LOCAL RUNTIME" : "FIXTURE"}
             </StatusBadge>
           </div>
@@ -150,16 +167,26 @@ function SidebarFooter({ collapsed }: { collapsed?: boolean }) {
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground">Broker link</span>
             <StatusBadge
-              tone={env.broker.state === "CONNECTED" ? "ok" : env.broker.state === "DEGRADED" ? "warn" : "crit"}
+              tone={
+                env.broker.state === "CONNECTED"
+                  ? "ok"
+                  : env.broker.state === "DEGRADED"
+                    ? "warn"
+                    : "crit"
+              }
               size="sm"
             >
               {env.broker.state}
             </StatusBadge>
           </div>
           <div className="border-t border-panel-border/60 pt-1.5">
-            <div className="text-[9.5px] uppercase tracking-wider text-muted-foreground">Local Runtime Engine</div>
+            <div className="text-[9.5px] uppercase tracking-wider text-muted-foreground">
+              Local Runtime Engine
+            </div>
             <div className="num text-[10.5px] text-foreground/80">{PRODUCT_BRAND.runtimeName}</div>
-            <div className="num text-[10px] text-muted-foreground">v{snap.runtime.version} · {snap.runtime.buildHash}</div>
+            <div className="num text-[10px] text-muted-foreground">
+              v{snap.runtime.version} · {snap.runtime.buildHash}
+            </div>
           </div>
         </div>
       ) : (
@@ -184,13 +211,20 @@ export function AppSidebar({ collapsed = false }: { collapsed?: boolean }) {
         collapsed ? "w-14" : "w-56",
       )}
     >
-      <div className={cn("flex items-center gap-2 border-b border-panel-border px-3 py-3", collapsed && "justify-center px-2")}>
+      <div
+        className={cn(
+          "flex items-center gap-2 border-b border-panel-border px-3 py-3",
+          collapsed && "justify-center px-2",
+        )}
+      >
         <div className="grid h-7 w-7 place-items-center rounded-sm bg-primary/15 text-primary">
           <Activity className="h-4 w-4" />
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <div className="truncate text-[13px] font-semibold tracking-tight">{PRODUCT_BRAND.name}</div>
+            <div className="truncate text-[13px] font-semibold tracking-tight">
+              {PRODUCT_BRAND.name}
+            </div>
             <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
               {PRODUCT_BRAND.category}
             </div>
@@ -232,10 +266,7 @@ export function MobileSidebarDrawer({ open, onClose }: { open: boolean; onClose:
       aria-hidden={!open}
     >
       {/* Backdrop */}
-      <div
-        onClick={onClose}
-        className="absolute inset-0 bg-background/70 backdrop-blur-sm"
-      />
+      <div onClick={onClose} className="absolute inset-0 bg-background/70 backdrop-blur-sm" />
       {/* Panel */}
       <aside
         role="dialog"
@@ -250,8 +281,12 @@ export function MobileSidebarDrawer({ open, onClose }: { open: boolean; onClose:
             <Activity className="h-4 w-4" />
           </div>
           <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-semibold tracking-tight">{PRODUCT_BRAND.name}</div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{PRODUCT_BRAND.category}</div>
+            <div className="truncate text-[13px] font-semibold tracking-tight">
+              {PRODUCT_BRAND.name}
+            </div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              {PRODUCT_BRAND.category}
+            </div>
           </div>
           <button
             onClick={onClose}

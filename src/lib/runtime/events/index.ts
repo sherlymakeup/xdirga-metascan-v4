@@ -7,6 +7,11 @@ export * from "./event-store";
 export * from "./event-source";
 export * from "./notification-policy";
 export * from "./notification-center";
-export { getFixtureEventSource, useFixtureEventSourceState, DevelopmentFixtureEventSource, scheduleFixtureManagementLifecycle } from "./fixture-event-source";
+export {
+  getFixtureEventSource,
+  useFixtureEventSourceState,
+  DevelopmentFixtureEventSource,
+  scheduleFixtureManagementLifecycle,
+} from "./fixture-event-source";
 export { routeEvent, resetEventRouter } from "./event-router";
 export { bootstrapEventPipeline, teardownEventPipeline } from "./bootstrap";

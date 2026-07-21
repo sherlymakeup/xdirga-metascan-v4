@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  equivalenceKey,
-  deriveIdempotencyKey,
-} from "../commands/command-equivalence";
+import { equivalenceKey, deriveIdempotencyKey } from "../commands/command-equivalence";
 
 describe("command-equivalence", () => {
   it("normalizes significant parameters and ignores UX-only fields", () => {

@@ -58,7 +58,8 @@ function ErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
           Cockpit render failure
         </h1>
         <p className="mt-1 text-xs text-muted-foreground">
-          A UI component raised an uncaught exception. The trading runtime is unaffected — the UI is a monitor only.
+          A UI component raised an uncaught exception. The trading runtime is unaffected — the UI is
+          a monitor only.
         </p>
         <pre className="num mt-3 max-h-40 overflow-auto rounded-sm border border-panel-border bg-background p-2 text-left text-[11px] text-muted-foreground">
           {error.message}
@@ -144,8 +145,6 @@ function RootComponent() {
     bootstrapEventPipeline();
   }, []);
 
-
-
   return (
     <QueryClientProvider client={queryClient}>
       <div className="flex min-h-screen w-full">
@@ -154,7 +153,10 @@ function RootComponent() {
         <div className="flex min-w-0 flex-1 flex-col">
           <TopStatusBar
             onToggleSidebar={() => {
-              if (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches) {
+              if (
+                typeof window !== "undefined" &&
+                window.matchMedia("(min-width: 768px)").matches
+              ) {
                 setSidebarCollapsed((v) => !v);
               } else {
                 setMobileOpen((v) => !v);

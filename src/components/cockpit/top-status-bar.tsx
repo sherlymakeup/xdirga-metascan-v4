@@ -1,7 +1,12 @@
 import { useEffect, useState } from "react";
 import { AlertTriangle, Clock, Menu } from "lucide-react";
 import { NotificationCenterButton } from "@/components/runtime/NotificationCenter";
-import { hydrateScenarioFromStorage, useScenario, useSnapshot, getRuntimeAdapter } from "@/lib/adapters/runtime";
+import {
+  hydrateScenarioFromStorage,
+  useScenario,
+  useSnapshot,
+  getRuntimeAdapter,
+} from "@/lib/adapters/runtime";
 import { SCENARIOS } from "@/lib/demo/scenarios";
 import { fmtDuration, fmtTime, relativeTime } from "@/lib/format";
 import { PRODUCT_BRAND } from "@/lib/constants/brand";
@@ -40,11 +45,13 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
   }, []);
 
   const heartbeatAge = snap.runtime.lastHeartbeatAt
-    ? Math.max(0, Math.round((Date.now() - new Date(snap.runtime.lastHeartbeatAt).getTime()) / 1000))
+    ? Math.max(
+        0,
+        Math.round((Date.now() - new Date(snap.runtime.lastHeartbeatAt).getTime()) / 1000),
+      )
     : null;
   const brokerLatency = snap.broker.avgLatencyMs == null ? "—" : `${snap.broker.avgLatencyMs}ms`;
   const uptime = snap.runtime.uptimeSec == null ? "—" : fmtDuration(snap.runtime.uptimeSec);
-
 
   return (
     <header className="sticky top-0 z-30 border-b border-panel-border bg-background/95 backdrop-blur">
@@ -64,8 +71,12 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
               X
             </span>
             <div className="min-w-0 leading-tight">
-              <div className="truncate text-[12px] font-semibold tracking-tight">{PRODUCT_BRAND.name}</div>
-              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">{PRODUCT_BRAND.category}</div>
+              <div className="truncate text-[12px] font-semibold tracking-tight">
+                {PRODUCT_BRAND.name}
+              </div>
+              <div className="text-[9px] uppercase tracking-wider text-muted-foreground">
+                {PRODUCT_BRAND.category}
+              </div>
             </div>
           </div>
         </div>
@@ -80,7 +91,13 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
           <BrokerConnectionBadge />
           <ExecutionSemanticsBadge />
           <StatusBadge
-            tone={snap.account.freshness === "FRESH" ? "ok" : snap.account.freshness === "STALE" ? "crit" : "warn"}
+            tone={
+              snap.account.freshness === "FRESH"
+                ? "ok"
+                : snap.account.freshness === "STALE"
+                  ? "crit"
+                  : "warn"
+            }
           >
             Data {snap.account.freshness}
           </StatusBadge>
@@ -97,7 +114,8 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
           </span>
           <span className="num">↔ {brokerLatency}</span>
           <span>
-            hb {hydrated && heartbeatAge != null ? `${heartbeatAge}s` : "—"} · uptime {hydrated ? uptime : "—"}
+            hb {hydrated && heartbeatAge != null ? `${heartbeatAge}s` : "—"} · uptime{" "}
+            {hydrated ? uptime : "—"}
           </span>
         </div>
 
@@ -122,13 +140,21 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
             Entries {snap.runtime.entriesEnabled ? "ON" : "OFF"}
           </StatusBadge>
           <StatusBadge
-            tone={snap.account.freshness === "FRESH" ? "ok" : snap.account.freshness === "STALE" ? "crit" : "warn"}
+            tone={
+              snap.account.freshness === "FRESH"
+                ? "ok"
+                : snap.account.freshness === "STALE"
+                  ? "crit"
+                  : "warn"
+            }
           >
             Data {snap.account.freshness}
           </StatusBadge>
           <span className="ml-1 inline-flex shrink-0 items-center gap-2 rounded-md border border-panel-border bg-panel-elevated px-2 py-1 text-[10px] text-muted-foreground">
             <Clock className="h-3 w-3" />
-            <span className="num text-foreground/90">{hydrated ? fmtTime(now.toISOString()) : "--:--:--"}</span>
+            <span className="num text-foreground/90">
+              {hydrated ? fmtTime(now.toISOString()) : "--:--:--"}
+            </span>
             <span className="num">↔{brokerLatency}</span>
           </span>
         </div>
@@ -146,10 +172,13 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
         >
           <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
           <span className="min-w-0 truncate">
-            <span className="font-semibold uppercase tracking-wider">{snap.runtime.state}</span> — {snap.runtime.stateReason}
+            <span className="font-semibold uppercase tracking-wider">{snap.runtime.state}</span> —{" "}
+            {snap.runtime.stateReason}
           </span>
           <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
-            {snap.runtime.stateChangedAt ? relativeTime(snap.runtime.stateChangedAt, now.toISOString()) : "—"}
+            {snap.runtime.stateChangedAt
+              ? relativeTime(snap.runtime.stateChangedAt, now.toISOString())
+              : "—"}
           </span>
         </div>
       )}

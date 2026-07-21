@@ -12,11 +12,11 @@
 The frontend distinguishes **frontend data source** from **broker environment**
 and never conflates them:
 
-| Concept                | Values                                        | Owned by         |
-| ---------------------- | --------------------------------------------- | ---------------- |
-| `FrontendDataSource`   | `DEVELOPMENT_FIXTURE` \| `LOCAL_RUNTIME`      | frontend         |
-| `BrokerEnvironment`    | `TRIAL` \| `LIVE`                             | runtime + broker |
-| `RuntimeMode`          | `FIXTURE` \| `LIVE`                           | derived          |
+| Concept              | Values                                   | Owned by         |
+| -------------------- | ---------------------------------------- | ---------------- |
+| `FrontendDataSource` | `DEVELOPMENT_FIXTURE` \| `LOCAL_RUNTIME` | frontend         |
+| `BrokerEnvironment`  | `TRIAL` \| `LIVE`                        | runtime + broker |
+| `RuntimeMode`        | `FIXTURE` \| `LIVE`                      | derived          |
 
 `DEVELOPMENT_FIXTURE` is a deterministic in-browser simulator used until a
 local runtime is reachable. It must **never** be presented as if it were a
@@ -30,7 +30,9 @@ All adapters implement `RuntimeAdapter` (see `src/lib/runtime/runtime-adapter.ts
 `getDescriptor()` returns the truthful identity strip consumed by the UI:
 
 ```ts
-{ source, mode, brokerEnvironment, connection, target }
+{
+  (source, mode, brokerEnvironment, connection, target);
+}
 ```
 
 `connection` is one of `CONNECTED | CONNECTING | DISCONNECTED | UNAVAILABLE`.
@@ -103,6 +105,7 @@ Event type union is closed — see `RUNTIME_EVENT_TYPES`. Any unknown type
 fails validation and is emitted as `system.validation.failed`.
 
 Deduplication semantics are enforced by `EventDeduplicator`:
+
 - Duplicate `eventId` → drop
 - Older sequence than cursor → drop
 - Older `bootId` → drop as `obsolete-boot`
@@ -157,13 +160,13 @@ mode selector, and diagnostic panels. In a production build:
 
 `src/lib/runtime/__tests__/` covers the pure contract logic:
 
-| Suite                          | Guards                                          |
-| ------------------------------ | ----------------------------------------------- |
-| `command-equivalence.test.ts`  | idempotency key derivation                      |
-| `command-transitions.test.ts`  | state machine, terminal states                  |
-| `freshness-policy.test.ts`     | classification + safety-command allow-list      |
-| `event-deduplicator.test.ts`   | seq gap, boot reset, obsolete-boot rejection    |
-| `notification-policy.test.ts`  | CRITICAL escalation, silent-type filtering      |
+| Suite                         | Guards                                       |
+| ----------------------------- | -------------------------------------------- |
+| `command-equivalence.test.ts` | idempotency key derivation                   |
+| `command-transitions.test.ts` | state machine, terminal states               |
+| `freshness-policy.test.ts`    | classification + safety-command allow-list   |
+| `event-deduplicator.test.ts`  | seq gap, boot reset, obsolete-boot rejection |
+| `notification-policy.test.ts` | CRITICAL escalation, silent-type filtering   |
 
 Run: `bunx vitest run src/lib/runtime/__tests__`.
 
@@ -176,12 +179,12 @@ corresponding pure module + test in the same change.
 
 ### Transport: REST + SSE (WebSocket is NOT supported)
 
-* Everything is REST + Server-Sent Events. There is no WebSocket surface.
-* REST auth: `Authorization: Bearer <token>`.
-* SSE auth: the token is passed as `?token=<token>` on the stream URL because
+- Everything is REST + Server-Sent Events. There is no WebSocket surface.
+- REST auth: `Authorization: Bearer <token>`.
+- SSE auth: the token is passed as `?token=<token>` on the stream URL because
   `EventSource` cannot set custom headers. The backend MUST accept the token
   from BOTH transports on the SAME identity.
-* SSE stream path: `${baseUrl}${eventStreamPath}` where `eventStreamPath`
+- SSE stream path: `${baseUrl}${eventStreamPath}` where `eventStreamPath`
   defaults to `/events/stream`.
 
 ### Sign convention (commission, swap, netPnl)
@@ -200,29 +203,29 @@ Addition — never subtraction. Enforced by fixtures and covered by
 
 ### Trade Journal cache semantics
 
-* Cache is bounded to the 500 most-recent closed trades; older rows are
+- Cache is bounded to the 500 most-recent closed trades; older rows are
   fetched from `RuntimeAdapter.getTradeHistory({ cursor, limit })`.
-* Dedup key: `tradeId`. On conflict, the LIVE `trade.closed` EVENT WINS
+- Dedup key: `tradeId`. On conflict, the LIVE `trade.closed` EVENT WINS
   over any paginated backfill row for the same id. Once a tradeId has been
   seen via an event, later `getTradeHistory` pages MUST NOT overwrite it.
-* See `src/lib/runtime/domain/trade-journal.ts` + `trade-journal.test.ts`.
+- See `src/lib/runtime/domain/trade-journal.ts` + `trade-journal.test.ts`.
 
 ### R-multiple null handling
 
-* Trades with `rMultiple === null` are EXCLUDED from the R-multiple
+- Trades with `rMultiple === null` are EXCLUDED from the R-multiple
   histogram and from `avgR`.
-* They ARE counted in trade totals (`total`, `netPnl`, `wins/losses`).
-* The Analytics summary strip surfaces an explicit `n/a R excluded` count so
+- They ARE counted in trade totals (`total`, `netPnl`, `wins/losses`).
+- The Analytics summary strip surfaces an explicit `n/a R excluded` count so
   nothing silently disappears.
 
 ### Position Autopilot Management
 
-* Every open `Position` carries a `management` field (`PositionManagement | null`).
-* Autopilot plan components: `breakEven`, `trailing`, `partialTp`, `timeExit`.
-* Operator commands:
-  * `position.management.pause` — pause autopilot for a single position.
-  * `position.management.resume` — resume autopilot for a single position.
-* Live events under `position.management.*` update the plan in place and
+- Every open `Position` carries a `management` field (`PositionManagement | null`).
+- Autopilot plan components: `breakEven`, `trailing`, `partialTp`, `timeExit`.
+- Operator commands:
+  - `position.management.pause` — pause autopilot for a single position.
+  - `position.management.resume` — resume autopilot for a single position.
+- Live events under `position.management.*` update the plan in place and
   are projected into `Position.management` via the domain projections.
 
 ---
@@ -240,16 +243,16 @@ paths the frontend calls, unmodified.
 
 ### 10.1 Endpoint table
 
-| Method | Path                            | Purpose                                   | Auth        |
-| ------ | ------------------------------- | ----------------------------------------- | ----------- |
-| GET    | `/v4/handshake`                 | Protocol identity + schema hash           | Bearer      |
-| GET    | `/v4/capabilities`              | Allowed commands + feature flags          | Bearer      |
-| GET    | `/v4/snapshot`                  | Atomic `CockpitSnapshot` envelope         | Bearer      |
-| POST   | `/v4/commands`                  | Submit a command (idempotent)             | Bearer      |
-| GET    | `/v4/commands/{commandId}`      | Poll a single command status              | Bearer      |
-| GET    | `/v4/events/stream`             | SSE event stream (see §10.5)              | `?token=`   |
-| GET    | `/v4/history/trades`            | Paginated closed-trade history            | Bearer      |
-| GET    | `/v4/health`                    | Liveness/readiness probe                  | Bearer      |
+| Method | Path                       | Purpose                           | Auth      |
+| ------ | -------------------------- | --------------------------------- | --------- |
+| GET    | `/v4/handshake`            | Protocol identity + schema hash   | Bearer    |
+| GET    | `/v4/capabilities`         | Allowed commands + feature flags  | Bearer    |
+| GET    | `/v4/snapshot`             | Atomic `CockpitSnapshot` envelope | Bearer    |
+| POST   | `/v4/commands`             | Submit a command (idempotent)     | Bearer    |
+| GET    | `/v4/commands/{commandId}` | Poll a single command status      | Bearer    |
+| GET    | `/v4/events/stream`        | SSE event stream (see §10.5)      | `?token=` |
+| GET    | `/v4/history/trades`       | Paginated closed-trade history    | Bearer    |
+| GET    | `/v4/health`               | Liveness/readiness probe          | Bearer    |
 
 ### 10.2 `GET /v4/handshake`
 
@@ -291,15 +294,15 @@ new command is created. See `command-equivalence.ts`.
 
 ### 10.5 `GET /v4/events/stream` (SSE)
 
-* Content-Type: `text/event-stream`.
-* Each SSE frame:
-  * `id:` MUST equal the envelope `sequence` (monotonic per `bootId`).
-  * `event:` MUST equal the envelope `type`.
-  * `data:` is the JSON-encoded `RuntimeEventEnvelope`.
-* Reconnect: the frontend sends `Last-Event-ID: <last sequence>`. The server
+- Content-Type: `text/event-stream`.
+- Each SSE frame:
+  - `id:` MUST equal the envelope `sequence` (monotonic per `bootId`).
+  - `event:` MUST equal the envelope `type`.
+  - `data:` is the JSON-encoded `RuntimeEventEnvelope`.
+- Reconnect: the frontend sends `Last-Event-ID: <last sequence>`. The server
   MUST resume from `sequence + 1` if still available, otherwise emit
   `system.resync.required` and the frontend refetches `/v4/snapshot`.
-* Auth: token via `?token=`. No cookies.
+- Auth: token via `?token=`. No cookies.
 
 ### 10.6 `GET /v4/history/trades?cursor=&limit=`
 
@@ -319,29 +322,29 @@ Required kinds. Payload schema names refer to the Zod payload shapes in
 `src/lib/runtime/events/event-schemas.ts` and the command-param schemas the
 backend MUST accept:
 
-| Kind                              | Notes                              |
-| --------------------------------- | ---------------------------------- |
-| `runtime.start`                   | idempotent                         |
-| `runtime.pause`                   | safety-critical                    |
-| `runtime.resume`                  |                                    |
-| `runtime.emergencyKill`           | safety-critical                    |
-| `runtime.disableEntries`          | safety-critical                    |
-| `runtime.reconnectBroker`         |                                    |
-| `runtime.reconcile`               |                                    |
-| `strategy.pause`                  | `{ strategyId }`                   |
-| `strategy.resume`                 | `{ strategyId }`                   |
-| `order.cancel`                    | `{ orderId }`                      |
-| `order.cancelAll`                 | safety-critical                    |
-| `position.close`                  | `{ positionId }`                   |
-| `position.closeAll`               | safety-critical                    |
-| `position.management.pause`       | `{ positionId }`                   |
-| `position.management.resume`      | `{ positionId }`                   |
-| `breaker.reset`                   | `{ key }`                          |
-| `config.validate`                 | `{ configBlob }`                   |
-| `config.apply`                    | `{ configBlob }`                   |
-| `config.rollback`                 |                                    |
-| `alert.acknowledge`               | `{ alertId }`                      |
-| `incident.acknowledge`            | `{ incidentId }`                   |
+| Kind                         | Notes            |
+| ---------------------------- | ---------------- |
+| `runtime.start`              | idempotent       |
+| `runtime.pause`              | safety-critical  |
+| `runtime.resume`             |                  |
+| `runtime.emergencyKill`      | safety-critical  |
+| `runtime.disableEntries`     | safety-critical  |
+| `runtime.reconnectBroker`    |                  |
+| `runtime.reconcile`          |                  |
+| `strategy.pause`             | `{ strategyId }` |
+| `strategy.resume`            | `{ strategyId }` |
+| `order.cancel`               | `{ orderId }`    |
+| `order.cancelAll`            | safety-critical  |
+| `position.close`             | `{ positionId }` |
+| `position.closeAll`          | safety-critical  |
+| `position.management.pause`  | `{ positionId }` |
+| `position.management.resume` | `{ positionId }` |
+| `breaker.reset`              | `{ key }`        |
+| `config.validate`            | `{ configBlob }` |
+| `config.apply`               | `{ configBlob }` |
+| `config.rollback`            |                  |
+| `alert.acknowledge`          | `{ alertId }`    |
+| `incident.acknowledge`       | `{ incidentId }` |
 
 ### 10.9 Event types (authoritative)
 
@@ -351,20 +354,20 @@ Backends MUST NOT emit unknown types — the envelope validator rejects them.
 
 Payload schema names (see `event-schemas.ts`):
 
-| Type prefix                             | Payload schema                              |
-| --------------------------------------- | ------------------------------------------- |
-| `command.*`                             | `{ commandId, state?, message?, reason? }`  |
-| `order.*`                               | `{ orderId, status?, symbol? }`             |
-| `position.management.plan_changed`      | `planChangedPayloadSchema`                  |
-| `position.management.action_executed`   | `actionExecutedPayloadSchema` (discriminated on `action`) |
-| `position.management.action_failed`     | `actionFailedPayloadSchema`                 |
-| `position.*` (other)                    | `{ positionId, protection?, symbol? }`      |
-| `trade.closed`                          | Closed-trade payload (signed cost identity) |
-| `strategy.*`                            | `{ strategyId }`                            |
-| `safety.circuit_breaker.*`              | `{ key, state? }`                           |
-| `reconciliation.*`                      | `{ reconciliationRunId? }`                  |
-| `risk.limit.*`                          | `{ key, value?, threshold? }`               |
-| `system.event_gap.*`                    | `{ from, to, missing }`                     |
+| Type prefix                           | Payload schema                                            |
+| ------------------------------------- | --------------------------------------------------------- |
+| `command.*`                           | `{ commandId, state?, message?, reason? }`                |
+| `order.*`                             | `{ orderId, status?, symbol? }`                           |
+| `position.management.plan_changed`    | `planChangedPayloadSchema`                                |
+| `position.management.action_executed` | `actionExecutedPayloadSchema` (discriminated on `action`) |
+| `position.management.action_failed`   | `actionFailedPayloadSchema`                               |
+| `position.*` (other)                  | `{ positionId, protection?, symbol? }`                    |
+| `trade.closed`                        | Closed-trade payload (signed cost identity)               |
+| `strategy.*`                          | `{ strategyId }`                                          |
+| `safety.circuit_breaker.*`            | `{ key, state? }`                                         |
+| `reconciliation.*`                    | `{ reconciliationRunId? }`                                |
+| `risk.limit.*`                        | `{ key, value?, threshold? }`                             |
+| `system.event_gap.*`                  | `{ from, to, missing }`                                   |
 
 ### 10.10 Position management action enum
 
@@ -377,10 +380,10 @@ BREAK_EVEN | TRAILING_MOVE | PARTIAL_TP | TIME_EXIT
 
 `action_executed` details:
 
-* `BREAK_EVEN`  — `{ appliedAt?: ISO }`
-* `TRAILING_MOVE` — `{ newStopPrice: number }` (REQUIRED)
-* `PARTIAL_TP` — `{ levelId: string, executedPrice: number, closedVolume: number }` (ALL REQUIRED)
-* `TIME_EXIT`  — `{ executedAt?: ISO }`
+- `BREAK_EVEN` — `{ appliedAt?: ISO }`
+- `TRAILING_MOVE` — `{ newStopPrice: number }` (REQUIRED)
+- `PARTIAL_TP` — `{ levelId: string, executedPrice: number, closedVolume: number }` (ALL REQUIRED)
+- `TIME_EXIT` — `{ executedAt?: ISO }`
 
 `action_failed` — `{ action, reason, retryable, levelId? }` (levelId when
 action is `PARTIAL_TP`).

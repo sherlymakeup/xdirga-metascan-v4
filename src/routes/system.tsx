@@ -19,7 +19,10 @@ export const Route = createFileRoute("/system")({
   head: () => ({
     meta: [
       { title: "System · XDIRGA METASCAN" },
-      { name: "description", content: "System diagnostics, data source, and development fixtures." },
+      {
+        name: "description",
+        content: "System diagnostics, data source, and development fixtures.",
+      },
     ],
   }),
   component: SystemPage,
@@ -59,8 +62,8 @@ function SystemPage() {
         <p className="mt-3 text-[11.5px] text-muted-foreground">
           The frontend never claims that Exness, MetaTrader 5, or a local runtime is connected
           unless the backend reports so. When a local runtime becomes available and drops, the UI
-          shows <span className="font-semibold">DISCONNECTED</span> — it does not silently fall
-          back to fixture data.
+          shows <span className="font-semibold">DISCONNECTED</span> — it does not silently fall back
+          to fixture data.
         </p>
       </Panel>
 
@@ -69,13 +72,13 @@ function SystemPage() {
       <ConvergencePanel />
 
       {DEVELOPMENT_FEATURES_ENABLED && (
-        <Panel title="Operational diagnostics" subtitle="Live view of the state resolver — development only.">
+        <Panel
+          title="Operational diagnostics"
+          subtitle="Live view of the state resolver — development only."
+        >
           <FixtureDiagnosticsPanel />
         </Panel>
       )}
-
-
-
 
       {isFixture && DEVELOPMENT_FEATURES_ENABLED && (
         <Panel
@@ -109,11 +112,11 @@ function SystemPage() {
 
       <Panel title="About">
         <p className="text-[12px] text-muted-foreground">
-          XDIRGA METASCAN is a local-first automated trading control plane. This frontend
-          renders runtime state truthfully — including uncertainty and degraded modes — and only
-          ever <em>requests</em> actions from the runtime; execution is authoritative on the
-          backend. There is intentionally no operator-facing selector for DEMO, PAPER, or REPLAY:
-          fixtures are a development data source, not a trading mode.
+          XDIRGA METASCAN is a local-first automated trading control plane. This frontend renders
+          runtime state truthfully — including uncertainty and degraded modes — and only ever{" "}
+          <em>requests</em> actions from the runtime; execution is authoritative on the backend.
+          There is intentionally no operator-facing selector for DEMO, PAPER, or REPLAY: fixtures
+          are a development data source, not a trading mode.
         </p>
       </Panel>
     </div>
@@ -133,7 +136,13 @@ function Row({
     <div className="flex items-center justify-between gap-3 border-b border-panel-border/60 py-1.5">
       <dt className="text-[11px] uppercase tracking-widest text-muted-foreground">{label}</dt>
       <dd className="num text-[12.5px] font-semibold">
-        {tone ? <StatusBadge tone={tone} size="sm">{value}</StatusBadge> : value}
+        {tone ? (
+          <StatusBadge tone={tone} size="sm">
+            {value}
+          </StatusBadge>
+        ) : (
+          value
+        )}
       </dd>
     </div>
   );
@@ -166,12 +175,21 @@ function HandshakePanel() {
             Frontend expects
           </div>
           <dl className="num mt-2 space-y-1 text-[12px]">
-            <Row label="Protocol" value={`${compat.expected.protocolId} ${compat.expected.protocolVersion}`} />
+            <Row
+              label="Protocol"
+              value={`${compat.expected.protocolId} ${compat.expected.protocolVersion}`}
+            />
             <Row label="Schema" value={compat.expected.schemaVersion} />
             <Row label="Schema hash" value={compat.expected.schemaHash} />
             <Row label="Min runtime" value={compat.expected.minRuntimeVersion} />
-            <Row label="Required features" value={String(compat.expected.requiredFeatures.length)} />
-            <Row label="Required commands" value={String(compat.expected.requiredCommands.length)} />
+            <Row
+              label="Required features"
+              value={String(compat.expected.requiredFeatures.length)}
+            />
+            <Row
+              label="Required commands"
+              value={String(compat.expected.requiredCommands.length)}
+            />
           </dl>
         </div>
 
@@ -182,7 +200,10 @@ function HandshakePanel() {
           {handshake ? (
             <dl className="num mt-2 space-y-1 text-[12px]">
               <Row label="Runtime" value={`${handshake.runtimeName} ${handshake.runtimeVersion}`} />
-              <Row label="Protocol" value={`${handshake.protocolId} ${handshake.protocolVersion}`} />
+              <Row
+                label="Protocol"
+                value={`${handshake.protocolId} ${handshake.protocolVersion}`}
+              />
               <Row label="Schema" value={handshake.schemaVersion} />
               <Row label="Schema hash" value={handshake.schemaHash} />
               <Row label="Broker env" value={handshake.brokerEnvironment ?? "—"} tone="warn" />
@@ -210,7 +231,9 @@ function HandshakePanel() {
                   {r.severity}
                 </StatusBadge>
                 <div className="min-w-0">
-                  <div className="num text-[10.5px] font-semibold text-muted-foreground">{r.code}</div>
+                  <div className="num text-[10.5px] font-semibold text-muted-foreground">
+                    {r.code}
+                  </div>
                   <div>{r.message}</div>
                 </div>
               </li>
@@ -225,8 +248,8 @@ function HandshakePanel() {
             Dev-only · Simulate handshake mismatch
           </div>
           <p className="mt-1 text-[11px] text-muted-foreground">
-            Rewrite the fixture handshake to exercise the mismatch banner and SAFE MODE lockout.
-            No effect on real runtime behavior.
+            Rewrite the fixture handshake to exercise the mismatch banner and SAFE MODE lockout. No
+            effect on real runtime behavior.
           </p>
           <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
             {(["none", "minor", "major"] as const).map((kind) => (
@@ -239,7 +262,11 @@ function HandshakePanel() {
                     : "border-panel-border bg-panel-elevated hover:bg-muted"
                 }`}
               >
-                {kind === "none" ? "OK (match)" : kind === "minor" ? "Warn (minor drift)" : "Incompatible (major)"}
+                {kind === "none"
+                  ? "OK (match)"
+                  : kind === "minor"
+                    ? "Warn (minor drift)"
+                    : "Incompatible (major)"}
               </button>
             ))}
           </div>

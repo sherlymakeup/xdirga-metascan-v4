@@ -12,10 +12,7 @@ const SIGNIFICANT_PARAMS: Partial<Record<RuntimeCommandKind, readonly string[]>>
   "position.close": [],
 };
 
-function normalizedParams(
-  kind: RuntimeCommandKind,
-  parameters?: Record<string, unknown>,
-): string {
+function normalizedParams(kind: RuntimeCommandKind, parameters?: Record<string, unknown>): string {
   if (!parameters) return "";
   const keys = SIGNIFICANT_PARAMS[kind];
   const source = keys ? keys : Object.keys(parameters).sort();

@@ -28,7 +28,8 @@ export function ConnectionBanner() {
     ERROR: "Runtime connection error",
   };
 
-  const canReconnect = conn.state === "DISCONNECTED" || conn.state === "ERROR" || conn.state === "STALE";
+  const canReconnect =
+    conn.state === "DISCONNECTED" || conn.state === "ERROR" || conn.state === "STALE";
   const reconnect = async () => {
     setBusy(true);
     try {
@@ -63,7 +64,9 @@ export function ConnectionBanner() {
         </span>
         {conn.errorMessage && <span className="min-w-0 truncate">— {conn.errorMessage}</span>}
         {typeof conn.dataAgeMs === "number" && conn.dataAgeMs > 0 && (
-          <span className="num text-[10.5px] opacity-80">data {Math.round(conn.dataAgeMs / 1000)}s old</span>
+          <span className="num text-[10.5px] opacity-80">
+            data {Math.round(conn.dataAgeMs / 1000)}s old
+          </span>
         )}
         {canReconnect && (
           <button
@@ -72,7 +75,11 @@ export function ConnectionBanner() {
             disabled={busy}
             className="ml-auto inline-flex items-center gap-1 rounded-sm border border-current/40 bg-transparent px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wider hover:bg-current/10 disabled:opacity-50"
           >
-            {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {busy ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <RefreshCw className="h-3 w-3" />
+            )}
             Reconnect
           </button>
         )}

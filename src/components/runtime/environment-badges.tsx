@@ -28,11 +28,7 @@ export function DataSourceBadge({ source }: { source?: FrontendDataSource }) {
   );
 }
 
-export function LocalRuntimeConnectionBadge({
-  state,
-}: {
-  state?: LocalRuntimeConnectionState;
-}) {
+export function LocalRuntimeConnectionBadge({ state }: { state?: LocalRuntimeConnectionState }) {
   const vm = useBrokerEnvironment();
   const s = state ?? vm.localRuntimeConnection;
   const tone: StatusTone =
@@ -239,9 +235,7 @@ export function EnvironmentImpactPanel({ extra }: { extra?: ReactNode }) {
         <div className="flex items-start gap-2 rounded-sm border border-status-warn/40 bg-status-warn/10 px-2 py-1.5 text-status-warn">
           <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
           <div>
-            <div className="font-semibold uppercase tracking-wider">
-              Development Fixture Action
-            </div>
+            <div className="font-semibold uppercase tracking-wider">Development Fixture Action</div>
             <div>No real broker request will be sent. This is a fixture simulation only.</div>
           </div>
         </div>
@@ -252,8 +246,9 @@ export function EnvironmentImpactPanel({ extra }: { extra?: ReactNode }) {
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-status-warn" aria-hidden />
           <div className="text-muted-foreground">
             Target account is <span className="font-semibold text-foreground">Exness Trial</span>{" "}
-            but execution semantics remain <span className="font-semibold text-status-crit">Live-Grade</span>.
-            Safety confirmations are not relaxed.
+            but execution semantics remain{" "}
+            <span className="font-semibold text-status-crit">Live-Grade</span>. Safety confirmations
+            are not relaxed.
           </div>
         </div>
       )}

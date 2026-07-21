@@ -368,12 +368,7 @@ export interface Alert {
   incidentId?: string;
 }
 
-export type IncidentStatus =
-  | "OPEN"
-  | "ACKNOWLEDGED"
-  | "INVESTIGATING"
-  | "MITIGATED"
-  | "RESOLVED";
+export type IncidentStatus = "OPEN" | "ACKNOWLEDGED" | "INVESTIGATING" | "MITIGATED" | "RESOLVED";
 
 export interface Incident {
   id: string;

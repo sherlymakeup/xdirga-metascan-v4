@@ -7,14 +7,12 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { AlertOctagon, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ConfirmationDialog, type ConfirmationSubmitResult } from "@/components/cockpit/confirmation-dialog";
-import { EnvironmentImpactPanel } from "@/components/runtime/environment-badges";
 import {
-  submitCommand,
-  useCapability,
-  getRuntimeMode,
-  useCommand,
-} from "@/lib/runtime";
+  ConfirmationDialog,
+  type ConfirmationSubmitResult,
+} from "@/components/cockpit/confirmation-dialog";
+import { EnvironmentImpactPanel } from "@/components/runtime/environment-badges";
+import { submitCommand, useCapability, getRuntimeMode, useCommand } from "@/lib/runtime";
 import type { RuntimeCommandKind } from "@/lib/runtime";
 
 export type CommandButtonVariant = "default" | "outline" | "ghost" | "danger" | "primary";
@@ -46,13 +44,10 @@ interface CommandButtonProps {
 }
 
 const variantClasses: Record<CommandButtonVariant, string> = {
-  default:
-    "border border-panel-border bg-panel-elevated text-foreground hover:bg-muted",
-  outline:
-    "border border-panel-border bg-transparent text-foreground hover:bg-panel-elevated",
+  default: "border border-panel-border bg-panel-elevated text-foreground hover:bg-muted",
+  outline: "border border-panel-border bg-transparent text-foreground hover:bg-panel-elevated",
   ghost: "bg-transparent text-foreground hover:bg-panel-elevated",
-  primary:
-    "bg-primary text-primary-foreground hover:bg-primary/90 border border-transparent",
+  primary: "bg-primary text-primary-foreground hover:bg-primary/90 border border-transparent",
   danger:
     "bg-status-crit text-primary-foreground hover:bg-status-crit/90 border border-transparent",
 };
@@ -136,7 +131,7 @@ function DemoCommandButton({
 
   const disabled = !allowed || busy;
   const disabledReason = !allowed
-    ? capability?.reason ?? "Command not available in the current runtime state."
+    ? (capability?.reason ?? "Command not available in the current runtime state.")
     : busy
       ? "Command in progress"
       : undefined;
@@ -191,7 +186,6 @@ function DemoCommandButton({
     </>
   );
 }
-
 
 function defaultTitle(kind: RuntimeCommandKind): string {
   const map: Partial<Record<RuntimeCommandKind, string>> = {

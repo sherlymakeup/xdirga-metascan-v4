@@ -5,9 +5,9 @@ Runtime V4** backend. The UI never talks to a broker directly.
 
 ## Data sources
 
-| `FrontendDataSource` | Meaning | Notes |
-| --- | --- | --- |
-| `DEVELOPMENT_FIXTURE` | In-memory fixtures | No runtime, no broker, no orders reach any external system. Fixture adapter is the reference implementation of `RuntimeAdapter`. |
+| `FrontendDataSource`  | Meaning                | Notes                                                                                                                                                                                           |
+| --------------------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DEVELOPMENT_FIXTURE` | In-memory fixtures     | No runtime, no broker, no orders reach any external system. Fixture adapter is the reference implementation of `RuntimeAdapter`.                                                                |
 | `LOCAL_RUNTIME`       | HTTP/SSE local runtime | Requires the local XDirga Runtime V4 to be running. `HttpRuntimeAdapter` is currently a **safe-fail** stub — reads return empty/disconnected views; commands reject with `NotImplementedError`. |
 
 Broker environment (`TRIAL` | `LIVE`) and execution semantics (`LIVE`) are

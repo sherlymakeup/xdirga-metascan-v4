@@ -1,8 +1,5 @@
 import { describe, it, expect } from "vitest";
-import {
-  validateTransition,
-  isTerminalState,
-} from "../commands/command-transitions";
+import { validateTransition, isTerminalState } from "../commands/command-transitions";
 
 describe("command-transitions", () => {
   it("allows canonical happy-path progression", () => {

@@ -11,14 +11,14 @@ account at Exness. The frontend already exists (React, protocol 4.1.0) and
 its contract is AUTHORITATIVE. Read these files first and treat them as the
 spec you must implement, not suggestions:
 
-- frontend-contract/HANDOFF.md        (endpoint table §"/v4", SSE semantics,
-                                       event registry, command registry)
+- frontend-contract/HANDOFF.md (endpoint table §"/v4", SSE semantics,
+  event registry, command registry)
 - frontend-contract/runtime-contract.ts (protocolVersion 4.1.0, required
-                                       capabilities, schemaVersion)
-- frontend-contract/runtime-types.ts  (CockpitSnapshot, Position,
-                                       PositionManagement, ClosedTrade,
-                                       Command lifecycle states)
-- frontend-contract/event-schemas.ts  (payload shapes per event type)
+  capabilities, schemaVersion)
+- frontend-contract/runtime-types.ts (CockpitSnapshot, Position,
+  PositionManagement, ClosedTrade,
+  Command lifecycle states)
+- frontend-contract/event-schemas.ts (payload shapes per event type)
 
 NON-NEGOTIABLE OPERATING PRINCIPLES (these override any convenience):
 
@@ -102,16 +102,16 @@ One Python process, three core components:
      emit reconciliation events for every difference, then resume.
 
 3. API layer (FastAPI) — implement the /v4 endpoint table from HANDOFF.md:
-   - GET /v4/handshake      → protocol identity: protocolVersion "4.1.0",
+   - GET /v4/handshake → protocol identity: protocolVersion "4.1.0",
      schemaVersion, schemaHash (see below), runtimeId, bootId, revision,
      granted role. Auth: static bearer token generated at boot, printed
      once to console + written to a local file the UI reads.
-   - GET /v4/capabilities   → allowed commands + feature flags per the
+   - GET /v4/capabilities → allowed commands + feature flags per the
      contract's capability rules (role, safe-mode, broker-offline gating).
-   - GET /v4/snapshot       → atomic CockpitSnapshot at (bootId, revision).
+   - GET /v4/snapshot → atomic CockpitSnapshot at (bootId, revision).
      Must be internally consistent — build it from one state view under a
      lock, never from live mutating structures.
-   - POST /v4/commands      → idempotencyKey semantics: same key returns
+   - POST /v4/commands → idempotencyKey semantics: same key returns
      the SAME command record (replay), never a duplicate execution. Command
      lifecycle states and transitions must match
      frontend-contract command-transitions exactly. Commands that reach the
@@ -119,14 +119,14 @@ One Python process, three core components:
      mid-call) become EXECUTION_UNKNOWN and lock their entity until a
      reconciliation pass proves what happened, then emit
      reconciliation.issue.resolved.
-   - GET /v4/commands/{id}  → poll one command.
-   - GET /v4/events/stream  → SSE. `id:` = sequence. Supports Last-Event-ID
+   - GET /v4/commands/{id} → poll one command.
+   - GET /v4/events/stream → SSE. `id:` = sequence. Supports Last-Event-ID
      resume from an in-memory ring buffer (>= 10k events); if the client is
      older than the buffer or bootId changed → send system.resync.required
      and expect the client to re-snapshot. Auth via ?token= (EventSource
      cannot set headers). Heartbeat comment every 10s.
    - GET /v4/history/trades → cursor pagination over the journal.
-   - GET /v4/health         → liveness + the SLO metrics block (below).
+   - GET /v4/health → liveness + the SLO metrics block (below).
 
 SCHEMA HASH: generate pydantic JSON Schema for the full event + command +
 snapshot surface, canonicalize (sorted keys, no whitespace), SHA-256. Write
@@ -141,20 +141,21 @@ Even though no strategy exists yet, the runtime accepts operator commands
 from the UI (open/close/modify/partial-close, pause/resume autopilot,
 kill switch). Every order-producing command passes a RiskGate that
 enforces, in order:
-  1. kill-switch not engaged (kill switch itself must ALWAYS be accepted)
-  2. runtime not in SAFE MODE / degraded state that blocks trading
-  3. data freshness: relevant tick age and account age within budget
-  4. hard SL present in the request or already on the position — an entry
-     without a broker-side SL is REJECTED, no exceptions
-  5. volume within symbol volume_min/max/step; price/SL/TP respect
-     trade_stops_level and freeze_level
-  6. spread guard: current spread <= configured multiple of rolling median
-  7. exposure guards: max open positions, max volume per symbol, max daily
-     realized+unrealized loss (as % of balance at day start, broker
-     midnight) → breaching the daily loss limit engages TRADING_HALT until
-     manually reset via a privileged command.
-Every rejection emits a command.rejected event with a machine-readable
-reason code. Every gate decision is journaled.
+
+1. kill-switch not engaged (kill switch itself must ALWAYS be accepted)
+2. runtime not in SAFE MODE / degraded state that blocks trading
+3. data freshness: relevant tick age and account age within budget
+4. hard SL present in the request or already on the position — an entry
+   without a broker-side SL is REJECTED, no exceptions
+5. volume within symbol volume_min/max/step; price/SL/TP respect
+   trade_stops_level and freeze_level
+6. spread guard: current spread <= configured multiple of rolling median
+7. exposure guards: max open positions, max volume per symbol, max daily
+   realized+unrealized loss (as % of balance at day start, broker
+   midnight) → breaching the daily loss limit engages TRADING_HALT until
+   manually reset via a privileged command.
+   Every rejection emits a command.rejected event with a machine-readable
+   reason code. Every gate decision is journaled.
 
 KILL SWITCH: closes nothing by itself in this phase (flatten comes with the
 autopilot phase) but immediately blocks all order-producing commands and
@@ -163,6 +164,7 @@ sets runtime state HALTED. It must work even when MT5 is disconnected.
 === ANTI-STALE / LATENCY SLOs (expose in /v4/health and as events) ===
 
 Measure continuously, per rolling 1-minute window:
+
 - tick_age_ms per symbol (now - last tick), budget: 1000ms during market
   hours FOR THAT SYMBOL (BTCUSDm trades 24/7 incl. weekends; forex/gold do
   not — session calendars are per-symbol config, never global)
@@ -170,9 +172,9 @@ Measure continuously, per rolling 1-minute window:
 - mt5_call_ms p50/p95 per call type
 - external_close_detection_ms (measured when they occur)
 - command_roundtrip_ms p50/p95 (accepted → broker-confirmed)
-Any budget breach → emit health.slo.breached, set the corresponding
-freshness state that the frontend already renders, and while breached the
-RiskGate rejects order-producing commands with reason=STALE_DATA.
+  Any budget breach → emit health.slo.breached, set the corresponding
+  freshness state that the frontend already renders, and while breached the
+  RiskGate rejects order-producing commands with reason=STALE_DATA.
 
 === PROCESS SURVIVAL (Windows) ===
 

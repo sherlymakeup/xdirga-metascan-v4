@@ -39,7 +39,13 @@ export function MetricCard({
 }: MetricProps) {
   const showValue = !loading && !unavailable;
   const deltaTone =
-    delta == null ? undefined : delta > 0 ? "text-profit" : delta < 0 ? "text-loss" : "text-muted-foreground";
+    delta == null
+      ? undefined
+      : delta > 0
+        ? "text-profit"
+        : delta < 0
+          ? "text-loss"
+          : "text-muted-foreground";
   const valueColor =
     tone === "ok"
       ? "text-status-ok"
@@ -71,11 +77,15 @@ export function MetricCard({
       </div>
 
       {loading && <div className="h-6 w-24 animate-pulse rounded bg-muted" />}
-      {unavailable && (
-        <div className="text-sm text-muted-foreground italic">Unavailable</div>
-      )}
+      {unavailable && <div className="text-sm text-muted-foreground italic">Unavailable</div>}
       {showValue && (
-        <div className={cn("num text-xl leading-tight font-semibold", compact && "text-lg", valueColor)}>
+        <div
+          className={cn(
+            "num text-xl leading-tight font-semibold",
+            compact && "text-lg",
+            valueColor,
+          )}
+        >
           {value}
         </div>
       )}

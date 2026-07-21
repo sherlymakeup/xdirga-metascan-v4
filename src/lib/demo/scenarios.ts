@@ -211,7 +211,7 @@ const POSITIONS: Position[] = [
     mfe: 132,
     mae: -28,
     commission: -3.5, // broker cost, negative
-    swap: -0.42,       // negative overnight funding
+    swap: -0.42, // negative overnight funding
     netPnl: 95.5 + -3.5 + -0.42, // 91.58 — identity: net = floating + commission + swap
     management: {
       planId: "mp_01HXDRG_A",
@@ -439,16 +439,112 @@ const ORDERS: Order[] = [
 ];
 
 const MARKETS: MarketSymbol[] = [
-  ["EURUSD", "FX", 1.0861, 1.08612, 1.0861, 0.12, 20, 100000, 0.00001, 0.01, 100, 0.01, -6.2, 1.4, 3.33],
-  ["GBPUSD", "FX", 1.27178, 1.27185, 1.27182, 0.32, 34, 100000, 0.00001, 0.01, 50, 0.01, -8.4, 2.1, 3.33],
-  ["USDJPY", "FX", 158.412, 158.418, 158.415, -0.18, 24, 100000, 0.001, 0.01, 50, 0.01, 5.2, -12.1, 3.33],
-  ["AUDJPY", "FX", 104.612, 104.622, 104.617, null, 60, 100000, 0.001, 0.01, 50, 0.01, 1.1, -3.4, 3.33],
-  ["XAUUSD", "METALS", 2415.71, 2415.94, 2415.83, 0.42, 210, 100, 0.01, 0.01, 100, 0.01, -18.2, -22.4, 5],
+  [
+    "EURUSD",
+    "FX",
+    1.0861,
+    1.08612,
+    1.0861,
+    0.12,
+    20,
+    100000,
+    0.00001,
+    0.01,
+    100,
+    0.01,
+    -6.2,
+    1.4,
+    3.33,
+  ],
+  [
+    "GBPUSD",
+    "FX",
+    1.27178,
+    1.27185,
+    1.27182,
+    0.32,
+    34,
+    100000,
+    0.00001,
+    0.01,
+    50,
+    0.01,
+    -8.4,
+    2.1,
+    3.33,
+  ],
+  [
+    "USDJPY",
+    "FX",
+    158.412,
+    158.418,
+    158.415,
+    -0.18,
+    24,
+    100000,
+    0.001,
+    0.01,
+    50,
+    0.01,
+    5.2,
+    -12.1,
+    3.33,
+  ],
+  [
+    "AUDJPY",
+    "FX",
+    104.612,
+    104.622,
+    104.617,
+    null,
+    60,
+    100000,
+    0.001,
+    0.01,
+    50,
+    0.01,
+    1.1,
+    -3.4,
+    3.33,
+  ],
+  [
+    "XAUUSD",
+    "METALS",
+    2415.71,
+    2415.94,
+    2415.83,
+    0.42,
+    210,
+    100,
+    0.01,
+    0.01,
+    100,
+    0.01,
+    -18.2,
+    -22.4,
+    5,
+  ],
   ["US30", "INDICES", 39821.4, 39825.2, 39823.3, -0.22, 850, 1, 0.1, 0.1, 100, 0.1, -2.1, -1.4, 1],
   ["NAS100", "INDICES", 20114.2, 20117.8, 20116.0, 0.11, 610, 1, 0.1, 0.1, 100, 0.1, -3.2, -2.4, 1],
   ["BTCUSD", "CRYPTO", 118420.1, 118472.4, 118446.2, 1.42, 4200, 1, 0.01, 0.01, 10, 0.01, 0, 0, 20],
 ].map(
-  ([symbol, group, bid, ask, last, changePct, tickAgeMs, contractSize, tickSize, minVolume, maxVolume, volumeStep, swapLong, swapShort, marginRequirement]) => ({
+  ([
+    symbol,
+    group,
+    bid,
+    ask,
+    last,
+    changePct,
+    tickAgeMs,
+    contractSize,
+    tickSize,
+    minVolume,
+    maxVolume,
+    volumeStep,
+    swapLong,
+    swapShort,
+    marginRequirement,
+  ]) => ({
     symbol: symbol as string,
     group: group as MarketSymbol["group"],
     bid: bid as number,
@@ -535,32 +631,285 @@ const INCIDENTS: Incident[] = [
 ];
 
 const RISK_LIMITS: RiskLimit[] = [
-  { key: "daily_loss", label: "Max Daily Loss", configured: 500, current: 46.1, unit: "USD", warnAt: 350, breachAt: 500, breached: false, changedAt: iso(-172800), changedBy: "operator@local" },
-  { key: "weekly_loss", label: "Max Weekly Loss", configured: 1500, current: 218.4, unit: "USD", warnAt: 1000, breachAt: 1500, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "drawdown", label: "Max Drawdown", configured: 5, current: 1.4, unit: "PCT", warnAt: 3, breachAt: 5, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "gross_exposure", label: "Max Gross Exposure", configured: 100000, current: 62410, unit: "USD", warnAt: 80000, breachAt: 100000, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "open_positions", label: "Max Open Positions", configured: 8, current: 3, unit: "COUNT", warnAt: 6, breachAt: 8, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "risk_per_trade", label: "Max Risk / Trade", configured: 1, current: 0.6, unit: "PCT", warnAt: 0.8, breachAt: 1, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "consecutive_losses", label: "Max Consecutive Losses", configured: 4, current: 1, unit: "COUNT", warnAt: 3, breachAt: 4, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "max_slippage", label: "Max Slippage", configured: 5, current: 0.4, unit: "PRICE", warnAt: 3, breachAt: 5, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "max_spread", label: "Max Spread", configured: 8, current: 3.2, unit: "PRICE", warnAt: 6, breachAt: 8, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "min_margin_level", label: "Min Margin Level", configured: 300, current: 1240, unit: "PCT", warnAt: 500, breachAt: 300, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "max_order_latency", label: "Max Order Latency", configured: 2000, current: 42, unit: "MS", warnAt: 800, breachAt: 2000, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
-  { key: "max_data_age", label: "Max Market Data Age", configured: 5000, current: 210, unit: "MS", warnAt: 2000, breachAt: 5000, breached: false, changedAt: iso(-604800), changedBy: "operator@local" },
+  {
+    key: "daily_loss",
+    label: "Max Daily Loss",
+    configured: 500,
+    current: 46.1,
+    unit: "USD",
+    warnAt: 350,
+    breachAt: 500,
+    breached: false,
+    changedAt: iso(-172800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "weekly_loss",
+    label: "Max Weekly Loss",
+    configured: 1500,
+    current: 218.4,
+    unit: "USD",
+    warnAt: 1000,
+    breachAt: 1500,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "drawdown",
+    label: "Max Drawdown",
+    configured: 5,
+    current: 1.4,
+    unit: "PCT",
+    warnAt: 3,
+    breachAt: 5,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "gross_exposure",
+    label: "Max Gross Exposure",
+    configured: 100000,
+    current: 62410,
+    unit: "USD",
+    warnAt: 80000,
+    breachAt: 100000,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "open_positions",
+    label: "Max Open Positions",
+    configured: 8,
+    current: 3,
+    unit: "COUNT",
+    warnAt: 6,
+    breachAt: 8,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "risk_per_trade",
+    label: "Max Risk / Trade",
+    configured: 1,
+    current: 0.6,
+    unit: "PCT",
+    warnAt: 0.8,
+    breachAt: 1,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "consecutive_losses",
+    label: "Max Consecutive Losses",
+    configured: 4,
+    current: 1,
+    unit: "COUNT",
+    warnAt: 3,
+    breachAt: 4,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "max_slippage",
+    label: "Max Slippage",
+    configured: 5,
+    current: 0.4,
+    unit: "PRICE",
+    warnAt: 3,
+    breachAt: 5,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "max_spread",
+    label: "Max Spread",
+    configured: 8,
+    current: 3.2,
+    unit: "PRICE",
+    warnAt: 6,
+    breachAt: 8,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "min_margin_level",
+    label: "Min Margin Level",
+    configured: 300,
+    current: 1240,
+    unit: "PCT",
+    warnAt: 500,
+    breachAt: 300,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "max_order_latency",
+    label: "Max Order Latency",
+    configured: 2000,
+    current: 42,
+    unit: "MS",
+    warnAt: 800,
+    breachAt: 2000,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
+  {
+    key: "max_data_age",
+    label: "Max Market Data Age",
+    configured: 5000,
+    current: 210,
+    unit: "MS",
+    warnAt: 2000,
+    breachAt: 5000,
+    breached: false,
+    changedAt: iso(-604800),
+    changedBy: "operator@local",
+  },
 ];
 
 const BREAKERS: CircuitBreaker[] = [
-  { key: "broker_disconnect", label: "Broker Disconnect", state: "CLOSED", triggerCondition: ">3s no heartbeat", currentValue: "1s", threshold: "3s", triggeredAt: null, recoveryCondition: "Stable connection for 30s", manualResetAllowed: false, lastResetAt: null },
-  { key: "market_stale", label: "Market Data Stale", state: "CLOSED", triggerCondition: ">5s tick age", currentValue: "210ms", threshold: "5s", triggeredAt: null, recoveryCondition: "<1s tick age for 15s", manualResetAllowed: false, lastResetAt: null },
-  { key: "excess_spread", label: "Excess Spread", state: "WARNING", triggerCondition: "spread > max", currentValue: "6.1", threshold: "8.0", triggeredAt: null, recoveryCondition: "Spread < 4.0", manualResetAllowed: true, lastResetAt: iso(-72000) },
-  { key: "daily_loss", label: "Daily Loss", state: "CLOSED", triggerCondition: "loss > daily limit", currentValue: "$46.10", threshold: "$500.00", triggeredAt: null, recoveryCondition: "Session reset", manualResetAllowed: false, lastResetAt: null },
-  { key: "drawdown", label: "Drawdown", state: "CLOSED", triggerCondition: "drawdown > max", currentValue: "1.4%", threshold: "5.0%", triggeredAt: null, recoveryCondition: "New equity high", manualResetAllowed: false, lastResetAt: null },
-  { key: "margin", label: "Margin", state: "CLOSED", triggerCondition: "margin level < min", currentValue: "1240%", threshold: "300%", triggeredAt: null, recoveryCondition: "margin > 500%", manualResetAllowed: false, lastResetAt: null },
-  { key: "exec_timeout", label: "Execution Timeout", state: "CLOSED", triggerCondition: ">2s no ack", currentValue: "42ms", threshold: "2000ms", triggeredAt: null, recoveryCondition: "3 successful acks", manualResetAllowed: true, lastResetAt: null },
-  { key: "repeat_reject", label: "Repeated Rejection", state: "WARNING", triggerCondition: "3+ rejects / 5m", currentValue: "2", threshold: "3", triggeredAt: null, recoveryCondition: "5m clean window", manualResetAllowed: true, lastResetAt: null },
-  { key: "recon_fail", label: "Reconciliation Failure", state: "CLOSED", triggerCondition: "2 consecutive failures", currentValue: "0", threshold: "2", triggeredAt: null, recoveryCondition: "Successful reconciliation", manualResetAllowed: true, lastResetAt: null },
-  { key: "strategy_error", label: "Strategy Error", state: "CLOSED", triggerCondition: "unhandled exception", currentValue: "0", threshold: "1", triggeredAt: null, recoveryCondition: "Manual reset", manualResetAllowed: true, lastResetAt: null },
-  { key: "runtime_health", label: "Runtime Health", state: "CLOSED", triggerCondition: "any subsystem DOWN", currentValue: "OK", threshold: "OK", triggeredAt: null, recoveryCondition: "All subsystems OK", manualResetAllowed: false, lastResetAt: null },
+  {
+    key: "broker_disconnect",
+    label: "Broker Disconnect",
+    state: "CLOSED",
+    triggerCondition: ">3s no heartbeat",
+    currentValue: "1s",
+    threshold: "3s",
+    triggeredAt: null,
+    recoveryCondition: "Stable connection for 30s",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
+  {
+    key: "market_stale",
+    label: "Market Data Stale",
+    state: "CLOSED",
+    triggerCondition: ">5s tick age",
+    currentValue: "210ms",
+    threshold: "5s",
+    triggeredAt: null,
+    recoveryCondition: "<1s tick age for 15s",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
+  {
+    key: "excess_spread",
+    label: "Excess Spread",
+    state: "WARNING",
+    triggerCondition: "spread > max",
+    currentValue: "6.1",
+    threshold: "8.0",
+    triggeredAt: null,
+    recoveryCondition: "Spread < 4.0",
+    manualResetAllowed: true,
+    lastResetAt: iso(-72000),
+  },
+  {
+    key: "daily_loss",
+    label: "Daily Loss",
+    state: "CLOSED",
+    triggerCondition: "loss > daily limit",
+    currentValue: "$46.10",
+    threshold: "$500.00",
+    triggeredAt: null,
+    recoveryCondition: "Session reset",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
+  {
+    key: "drawdown",
+    label: "Drawdown",
+    state: "CLOSED",
+    triggerCondition: "drawdown > max",
+    currentValue: "1.4%",
+    threshold: "5.0%",
+    triggeredAt: null,
+    recoveryCondition: "New equity high",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
+  {
+    key: "margin",
+    label: "Margin",
+    state: "CLOSED",
+    triggerCondition: "margin level < min",
+    currentValue: "1240%",
+    threshold: "300%",
+    triggeredAt: null,
+    recoveryCondition: "margin > 500%",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
+  {
+    key: "exec_timeout",
+    label: "Execution Timeout",
+    state: "CLOSED",
+    triggerCondition: ">2s no ack",
+    currentValue: "42ms",
+    threshold: "2000ms",
+    triggeredAt: null,
+    recoveryCondition: "3 successful acks",
+    manualResetAllowed: true,
+    lastResetAt: null,
+  },
+  {
+    key: "repeat_reject",
+    label: "Repeated Rejection",
+    state: "WARNING",
+    triggerCondition: "3+ rejects / 5m",
+    currentValue: "2",
+    threshold: "3",
+    triggeredAt: null,
+    recoveryCondition: "5m clean window",
+    manualResetAllowed: true,
+    lastResetAt: null,
+  },
+  {
+    key: "recon_fail",
+    label: "Reconciliation Failure",
+    state: "CLOSED",
+    triggerCondition: "2 consecutive failures",
+    currentValue: "0",
+    threshold: "2",
+    triggeredAt: null,
+    recoveryCondition: "Successful reconciliation",
+    manualResetAllowed: true,
+    lastResetAt: null,
+  },
+  {
+    key: "strategy_error",
+    label: "Strategy Error",
+    state: "CLOSED",
+    triggerCondition: "unhandled exception",
+    currentValue: "0",
+    threshold: "1",
+    triggeredAt: null,
+    recoveryCondition: "Manual reset",
+    manualResetAllowed: true,
+    lastResetAt: null,
+  },
+  {
+    key: "runtime_health",
+    label: "Runtime Health",
+    state: "CLOSED",
+    triggerCondition: "any subsystem DOWN",
+    currentValue: "OK",
+    threshold: "OK",
+    triggeredAt: null,
+    recoveryCondition: "All subsystems OK",
+    manualResetAllowed: false,
+    lastResetAt: null,
+  },
 ];
 
 const RECONCILIATION: ReconciliationSummary = {
@@ -579,16 +928,95 @@ const RECONCILIATION: ReconciliationSummary = {
 };
 
 const EVENTS: RuntimeEvent[] = [
-  { id: "evt_10", at: iso(-4), severity: "INFO", source: "runtime", component: "heartbeat", message: "Heartbeat OK (8ms)" },
-  { id: "evt_09", at: iso(-180), severity: "INFO", source: "recon", component: "reconciliation", message: "Reconciliation completed. 0 issues.", correlationId: "corr_recon_881" },
-  { id: "evt_08", at: iso(-320), severity: "WARNING", source: "broker", component: "gateway", message: "Broker latency elevated: 118ms p95" },
-  { id: "evt_07", at: iso(-610), severity: "ERROR", source: "safety", component: "excess_spread", message: "Order rejected by excess spread breaker", orderId: "ord_01HXDRG6C", symbol: "XAUUSD" },
-  { id: "evt_06", at: iso(-780), severity: "INFO", source: "execution", component: "fill", message: "Order filled EURUSD 0.5 lots @ 1.08420", orderId: "ord_01HXDRG6A", strategy: "XDRG Trend Continuation" },
-  { id: "evt_05", at: iso(-1090), severity: "INFO", source: "broker", component: "ack", message: "Limit order acknowledged USDJPY 0.2 @ 158.420", orderId: "ord_01HXDRG6B" },
-  { id: "evt_04", at: iso(-1820), severity: "INFO", source: "runtime", component: "state", message: "Runtime transitioned RECONCILING → READY" },
-  { id: "evt_03", at: iso(-1900), severity: "WARNING", source: "strategy", component: "xdrg_meanrev", message: "Strategy paused: signal quality below threshold", strategy: "XDRG Mean Reversion" },
-  { id: "evt_02", at: iso(-9080), severity: "WARNING", source: "risk", component: "protection", message: "Unprotected position detected", positionId: "pos_01HXDRG5C", symbol: "XAUUSD" },
-  { id: "evt_01", at: iso(-17400), severity: "INFO", source: "runtime", component: "boot", message: "Runtime started, version 4.0.0-rc.3" },
+  {
+    id: "evt_10",
+    at: iso(-4),
+    severity: "INFO",
+    source: "runtime",
+    component: "heartbeat",
+    message: "Heartbeat OK (8ms)",
+  },
+  {
+    id: "evt_09",
+    at: iso(-180),
+    severity: "INFO",
+    source: "recon",
+    component: "reconciliation",
+    message: "Reconciliation completed. 0 issues.",
+    correlationId: "corr_recon_881",
+  },
+  {
+    id: "evt_08",
+    at: iso(-320),
+    severity: "WARNING",
+    source: "broker",
+    component: "gateway",
+    message: "Broker latency elevated: 118ms p95",
+  },
+  {
+    id: "evt_07",
+    at: iso(-610),
+    severity: "ERROR",
+    source: "safety",
+    component: "excess_spread",
+    message: "Order rejected by excess spread breaker",
+    orderId: "ord_01HXDRG6C",
+    symbol: "XAUUSD",
+  },
+  {
+    id: "evt_06",
+    at: iso(-780),
+    severity: "INFO",
+    source: "execution",
+    component: "fill",
+    message: "Order filled EURUSD 0.5 lots @ 1.08420",
+    orderId: "ord_01HXDRG6A",
+    strategy: "XDRG Trend Continuation",
+  },
+  {
+    id: "evt_05",
+    at: iso(-1090),
+    severity: "INFO",
+    source: "broker",
+    component: "ack",
+    message: "Limit order acknowledged USDJPY 0.2 @ 158.420",
+    orderId: "ord_01HXDRG6B",
+  },
+  {
+    id: "evt_04",
+    at: iso(-1820),
+    severity: "INFO",
+    source: "runtime",
+    component: "state",
+    message: "Runtime transitioned RECONCILING → READY",
+  },
+  {
+    id: "evt_03",
+    at: iso(-1900),
+    severity: "WARNING",
+    source: "strategy",
+    component: "xdrg_meanrev",
+    message: "Strategy paused: signal quality below threshold",
+    strategy: "XDRG Mean Reversion",
+  },
+  {
+    id: "evt_02",
+    at: iso(-9080),
+    severity: "WARNING",
+    source: "risk",
+    component: "protection",
+    message: "Unprotected position detected",
+    positionId: "pos_01HXDRG5C",
+    symbol: "XAUUSD",
+  },
+  {
+    id: "evt_01",
+    at: iso(-17400),
+    severity: "INFO",
+    source: "runtime",
+    component: "boot",
+    message: "Runtime started, version 4.0.0-rc.3",
+  },
 ];
 
 const EQUITY: EquityPoint[] = seq(48).map((i) => {
@@ -601,7 +1029,10 @@ const EQUITY: EquityPoint[] = seq(48).map((i) => {
     equity: +equity.toFixed(2),
     balance: +balance.toFixed(2),
     floatingPnl: +(equity - balance).toFixed(2),
-    drawdown: +Math.min(0, drift - Math.max(...seq(i + 1).map((k) => Math.sin(k / 4) * 60 + k * 4))).toFixed(2),
+    drawdown: +Math.min(
+      0,
+      drift - Math.max(...seq(i + 1).map((k) => Math.sin(k / 4) * 60 + k * 4)),
+    ).toFixed(2),
   };
 });
 
@@ -630,7 +1061,16 @@ function accountFor(scenario: ScenarioKey) {
     freshness: "FRESH" as const,
   };
   if (scenario === "drawdown") {
-    return { ...base, equity: 24102, floatingPnl: -410, dailyDrawdown: -412, maxDrawdown: -6.8, realizedPnlToday: -380, riskUtilization: 92, freshness: "FRESH" as const };
+    return {
+      ...base,
+      equity: 24102,
+      floatingPnl: -410,
+      dailyDrawdown: -412,
+      maxDrawdown: -6.8,
+      realizedPnlToday: -380,
+      riskUtilization: 92,
+      freshness: "FRESH" as const,
+    };
   }
   if (scenario === "brokerDown") {
     return { ...base, freshness: "STALE" as const, updatedAt: iso(-180) };
@@ -648,15 +1088,38 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
 
   switch (scenario) {
     case "degraded":
-      runtime = baseRuntime({ state: "DEGRADED", stateReason: "Broker gateway latency exceeds warning threshold." });
-      subsystems[1] = { ...subsystems[1], state: "DEGRADED", latencyMs: 240, lastError: "p95 latency > 200ms" };
+      runtime = baseRuntime({
+        state: "DEGRADED",
+        stateReason: "Broker gateway latency exceeds warning threshold.",
+      });
+      subsystems[1] = {
+        ...subsystems[1],
+        state: "DEGRADED",
+        latencyMs: 240,
+        lastError: "p95 latency > 200ms",
+      };
       broker = baseBroker({ connection: "DEGRADED", avgLatencyMs: 240, timeoutCount: 3 });
       break;
     case "brokerDown":
-      runtime = baseRuntime({ state: "RECONNECTING", stateReason: "Broker connection lost. Attempting reconnect." });
-      subsystems[1] = { ...subsystems[1], state: "DOWN", latencyMs: null, lastError: "Connection closed by peer", currentAction: "reconnect_attempt=3" };
+      runtime = baseRuntime({
+        state: "RECONNECTING",
+        stateReason: "Broker connection lost. Attempting reconnect.",
+      });
+      subsystems[1] = {
+        ...subsystems[1],
+        state: "DOWN",
+        latencyMs: null,
+        lastError: "Connection closed by peer",
+        currentAction: "reconnect_attempt=3",
+      };
       subsystems[2] = { ...subsystems[2], state: "DEGRADED", lastError: "No ticks for 12s" };
-      broker = baseBroker({ connection: "RECONNECTING", tradingPermitted: false, queueDepth: 4, reconnectAttempts: 3, avgLatencyMs: 0 });
+      broker = baseBroker({
+        connection: "RECONNECTING",
+        tradingPermitted: false,
+        queueDepth: 4,
+        reconnectAttempts: 3,
+        avgLatencyMs: 0,
+      });
       alerts = [
         {
           id: "alert_critical",
@@ -672,7 +1135,10 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
       ];
       break;
     case "reconciling":
-      runtime = baseRuntime({ state: "RECONCILING", stateReason: "Recovering session state from broker." });
+      runtime = baseRuntime({
+        state: "RECONCILING",
+        stateReason: "Recovering session state from broker.",
+      });
       reconciliation = {
         ...RECONCILIATION,
         state: "RUNNING",
@@ -694,15 +1160,32 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
       };
       break;
     case "paused":
-      runtime = baseRuntime({ state: "PAUSED", entriesEnabled: false, automationEnabled: false, stateReason: "Operator paused runtime." });
+      runtime = baseRuntime({
+        state: "PAUSED",
+        entriesEnabled: false,
+        automationEnabled: false,
+        stateReason: "Operator paused runtime.",
+      });
       break;
     case "killed":
-      runtime = baseRuntime({ state: "KILLED", entriesEnabled: false, automationEnabled: false, stateReason: "Emergency kill executed by operator." });
-      subsystems.forEach((s, i) => (subsystems[i] = { ...s, state: i === 0 ? "OK" : "DOWN", currentAction: "halted" }));
+      runtime = baseRuntime({
+        state: "KILLED",
+        entriesEnabled: false,
+        automationEnabled: false,
+        stateReason: "Emergency kill executed by operator.",
+      });
+      subsystems.forEach(
+        (s, i) =>
+          (subsystems[i] = { ...s, state: i === 0 ? "OK" : "DOWN", currentAction: "halted" }),
+      );
       broker = baseBroker({ connection: "DISCONNECTED", tradingPermitted: false });
       break;
     case "drawdown":
-      runtime = baseRuntime({ state: "DEGRADED", entriesEnabled: false, stateReason: "Daily loss breaker WARNING." });
+      runtime = baseRuntime({
+        state: "DEGRADED",
+        entriesEnabled: false,
+        stateReason: "Daily loss breaker WARNING.",
+      });
       alerts = [
         {
           id: "alert_dd",
@@ -741,7 +1224,11 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
           lifecycle: [
             { at: iso(-45), step: "CREATED", detail: "Signal accepted" },
             { at: iso(-44), step: "SUBMITTED", detail: "Sent to broker" },
-            { at: iso(-20), step: "SYSTEM", detail: "Timeout waiting for acknowledgement (2000ms)" },
+            {
+              at: iso(-20),
+              step: "SYSTEM",
+              detail: "Timeout waiting for acknowledgement (2000ms)",
+            },
           ],
         },
         ...orders,
@@ -790,13 +1277,21 @@ export function buildSnapshot(scenario: ScenarioKey): CockpitSnapshot {
 
 export const SCENARIOS: Array<{ key: ScenarioKey; label: string; description: string }> = [
   { key: "healthy", label: "Healthy", description: "Runtime READY. All subsystems OK." },
-  { key: "degraded", label: "Degraded", description: "Broker latency elevated. Trading permitted." },
+  {
+    key: "degraded",
+    label: "Degraded",
+    description: "Broker latency elevated. Trading permitted.",
+  },
   { key: "brokerDown", label: "Broker Down", description: "Broker disconnected. Reconnecting." },
   { key: "reconciling", label: "Reconciling", description: "Rebuilding state from broker." },
   { key: "paused", label: "Paused", description: "Operator paused runtime." },
   { key: "killed", label: "Emergency Kill", description: "Runtime halted by operator." },
   { key: "drawdown", label: "Drawdown Warning", description: "Daily loss threshold approaching." },
-  { key: "executionUnknown", label: "Execution Unknown", description: "Order timed out — broker state uncertain." },
+  {
+    key: "executionUnknown",
+    label: "Execution Unknown",
+    description: "Order timed out — broker state uncertain.",
+  },
 ];
 
 // -----------------------------------------------------------------------------
@@ -804,10 +1299,7 @@ export const SCENARIOS: Array<{ key: ScenarioKey; label: string; description: st
 // R-multiple deliberately null for a couple of rows to exercise the "n/a R"
 // path in the journal summary.
 // -----------------------------------------------------------------------------
-function makeTrade(
-  i: number,
-  overrides: Partial<ClosedTrade> = {},
-): ClosedTrade {
+function makeTrade(i: number, overrides: Partial<ClosedTrade> = {}): ClosedTrade {
   const symbols = ["EURUSD", "GBPUSD", "XAUUSD", "USDJPY", "US500", "BTCUSD"] as const;
   const strategies = ["strat_trend", "strat_meanrev", "strat_breakout"] as const;
   const exitReasons: TradeExitReason[] = ["TP", "SL", "TRAIL", "PARTIAL_FINAL", "MANUAL"];
@@ -821,10 +1313,10 @@ function makeTrade(
   const swap = (i % 4 === 0 ? -1 : 1) * ((i % 3) * 0.4);
   const net = gross + commission + swap;
   const closedAtSec = -3600 * (i + 1);
-  const holdSec = 300 + (i * 137) % 4200;
+  const holdSec = 300 + ((i * 137) % 4200);
   // Deliberately null R on ~1 in 8 rows.
   const rNull = i % 8 === 7;
-  const r = rNull ? null : sign * (0.2 + ((i % 10) * 0.28));
+  const r = rNull ? null : sign * (0.2 + (i % 10) * 0.28);
   return {
     tradeId: `trd_${(1000 + i).toString(36)}`,
     positionId: `pos_hist_${i}`,
@@ -836,7 +1328,7 @@ function makeTrade(
     openedAt: iso(closedAtSec - holdSec),
     closedAt: iso(closedAtSec),
     holdingSeconds: holdSec,
-    volumeInitial: 0.1 + ((i % 5) * 0.05),
+    volumeInitial: 0.1 + (i % 5) * 0.05,
     grossPnl: round2(gross),
     commission: round2(commission),
     swap: round2(swap),
@@ -869,7 +1361,6 @@ export function getFixtureTradeHistory(cursor?: string | null, limit = 25) {
 export function getAllFixtureTrades(): ClosedTrade[] {
   return TRADE_HISTORY;
 }
-
 
 /**
  * Empty snapshot for the LOCAL_RUNTIME data source when no runtime is connected.

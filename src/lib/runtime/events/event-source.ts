@@ -26,8 +26,16 @@ export class SseRuntimeEventSource implements RuntimeEventSource {
   constructor(_url: string, _tokenProvider?: () => string | null) {
     throw new Error("SseRuntimeEventSource is not implemented yet (backend handoff).");
   }
-  async start() { /* unreachable */ }
-  async stop() { /* unreachable */ }
-  subscribe() { return () => {}; }
-  getState(): EventSourceState { return "STOPPED"; }
+  async start() {
+    /* unreachable */
+  }
+  async stop() {
+    /* unreachable */
+  }
+  subscribe() {
+    return () => {};
+  }
+  getState(): EventSourceState {
+    return "STOPPED";
+  }
 }

@@ -1,6 +1,14 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, Search, Star, TrendingDown, TrendingUp } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
+  Search,
+  Star,
+  TrendingDown,
+  TrendingUp,
+} from "lucide-react";
 import { useConnectionState, useSnapshot } from "@/lib/runtime";
 import { fmtNum, fmtPct, fmtPrice, relativeTime } from "@/lib/format";
 import { Panel } from "@/components/cockpit/panel";
@@ -30,7 +38,9 @@ export function marketPulse(markets: MarketSymbol[]) {
     const list = markets.filter((market) => market.group === group);
     const observed = list.filter((market) => market.changePct != null);
     const up = observed.filter((market) => market.changePct! >= 0).length;
-    const avg = observed.length ? observed.reduce((sum, market) => sum + market.changePct!, 0) / observed.length : null;
+    const avg = observed.length
+      ? observed.reduce((sum, market) => sum + market.changePct!, 0) / observed.length
+      : null;
     return {
       group,
       total: list.length,
@@ -67,7 +77,10 @@ function Sparkline({ pts, up }: { pts: number[]; up: boolean }) {
   const h = 20;
   const step = w / (pts.length - 1);
   const d = pts
-    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - ((p - min) / span) * h).toFixed(1)}`)
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - ((p - min) / span) * h).toFixed(1)}`,
+    )
     .join(" ");
   return (
     <svg width={w} height={h} className={cn("block", up ? "text-profit" : "text-loss")}>
@@ -76,10 +89,9 @@ function Sparkline({ pts, up }: { pts: number[]; up: boolean }) {
   );
 }
 
-
 function pipValue(m: MarketSymbol): number {
   // rough pip factor: FX = 10000, JPY-like or others = 100, crypto/indices raw
-  if (m.group === "FX") return (m.symbol.includes("JPY") ? 100 : 10000);
+  if (m.group === "FX") return m.symbol.includes("JPY") ? 100 : 10000;
   if (m.group === "METALS") return 100;
   return 1;
 }
@@ -97,7 +109,8 @@ function MarketsPage() {
 
   const filtered = useMemo(() => {
     const list = snap.markets.filter(
-      (m) => (group === "ALL" || m.group === group) && m.symbol.toLowerCase().includes(q.toLowerCase()),
+      (m) =>
+        (group === "ALL" || m.group === group) && m.symbol.toLowerCase().includes(q.toLowerCase()),
     );
     const dir = sortDir === "asc" ? 1 : -1;
     return [...list].sort((a, b) => {
@@ -127,15 +140,21 @@ function MarketsPage() {
   return (
     <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
       {connection.state !== "CONNECTED" && (
-        <div className="panel p-3 text-xs text-muted-foreground">{connection.state === "CONNECTING" ? "Loading authoritative markets…" : `Markets ${connection.state.toLowerCase()}`}</div>
+        <div className="panel p-3 text-xs text-muted-foreground">
+          {connection.state === "CONNECTING"
+            ? "Loading authoritative markets…"
+            : `Markets ${connection.state.toLowerCase()}`}
+        </div>
       )}
       {connection.state === "CONNECTED" && snap.markets.length === 0 && (
-        <div className="panel p-3 text-xs text-muted-foreground">No market observations available</div>
+        <div className="panel p-3 text-xs text-muted-foreground">
+          No market observations available
+        </div>
       )}
       {/* Market pulse strip */}
       <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
         {pulse.map((p) => {
-           const up = p.avg != null && p.avg >= 0;
+          const up = p.avg != null && p.avg >= 0;
 
           return (
             <button
@@ -143,19 +162,32 @@ function MarketsPage() {
               onClick={() => setGroup(p.group)}
               className={cn(
                 "group rounded-sm border bg-panel-elevated p-2.5 text-left transition-colors",
-                group === p.group ? "border-foreground/40" : "border-panel-border hover:border-panel-border/80",
+                group === p.group
+                  ? "border-foreground/40"
+                  : "border-panel-border hover:border-panel-border/80",
               )}
             >
               <div className="flex items-center justify-between">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">{p.group}</span>
+                <span className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground">
+                  {p.group}
+                </span>
                 <span className="num text-[10px] text-muted-foreground">{p.total}</span>
               </div>
               <div className="mt-1 flex items-baseline gap-1.5">
-                <span className={cn("num text-base font-semibold", p.avg == null ? "text-muted-foreground" : up ? "text-profit" : "text-loss")}>
+                <span
+                  className={cn(
+                    "num text-base font-semibold",
+                    p.avg == null ? "text-muted-foreground" : up ? "text-profit" : "text-loss",
+                  )}
+                >
                   {fmtPct(p.avg, 2)}
                 </span>
-                 {p.avg != null && (up ? <TrendingUp className="h-3 w-3 text-profit" /> : <TrendingDown className="h-3 w-3 text-loss" />)}
-
+                {p.avg != null &&
+                  (up ? (
+                    <TrendingUp className="h-3 w-3 text-profit" />
+                  ) : (
+                    <TrendingDown className="h-3 w-3 text-loss" />
+                  ))}
               </div>
               <div className="mt-1.5 flex h-1 overflow-hidden rounded-full bg-muted/60">
                 <div className="bg-profit" style={{ width: `${p.breadthPct}%` }} />
@@ -172,13 +204,13 @@ function MarketsPage() {
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]">
-        <Panel
-          bodyClassName="p-0"
-        >
+        <Panel bodyClassName="p-0">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-panel-border px-3 py-2">
             <div className="flex min-w-0 items-center gap-3">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Watchlist</div>
+                <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Watchlist
+                </div>
                 <div className="mt-0.5 text-xs">
                   <span className="num font-semibold">{filtered.length}</span>{" "}
                   <span className="text-muted-foreground">symbols</span>
@@ -221,18 +253,45 @@ function MarketsPage() {
               <thead className="sticky top-0 border-b border-panel-border bg-panel-elevated text-[10px] uppercase tracking-wider text-muted-foreground">
                 <tr>
                   <th className="w-6 px-2 py-1.5"></th>
-                  <SortTh label="Symbol" active={sortKey === "symbol"} dir={sortDir} onClick={() => toggleSort("symbol")} align="left" />
-                  <SortTh label="Bid" active={sortKey === "bid"} dir={sortDir} onClick={() => toggleSort("bid")} />
+                  <SortTh
+                    label="Symbol"
+                    active={sortKey === "symbol"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("symbol")}
+                    align="left"
+                  />
+                  <SortTh
+                    label="Bid"
+                    active={sortKey === "bid"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("bid")}
+                  />
                   <th className="px-2 py-1.5 text-right">Ask</th>
-                  <SortTh label="Spread" active={sortKey === "spread"} dir={sortDir} onClick={() => toggleSort("spread")} />
-                  <SortTh label="Chg %" active={sortKey === "changePct"} dir={sortDir} onClick={() => toggleSort("changePct")} />
+                  <SortTh
+                    label="Spread"
+                    active={sortKey === "spread"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("spread")}
+                  />
+                  <SortTh
+                    label="Chg %"
+                    active={sortKey === "changePct"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("changePct")}
+                  />
                   <th className="px-2 py-1.5 text-center">30-tick</th>
-                  <SortTh label="Tick" active={sortKey === "tickAgeMs"} dir={sortDir} onClick={() => toggleSort("tickAgeMs")} />
+                  <SortTh
+                    label="Tick"
+                    active={sortKey === "tickAgeMs"}
+                    dir={sortDir}
+                    onClick={() => toggleSort("tickAgeMs")}
+                  />
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((m) => {
-                  const pts = m.changePct == null ? null : seededSpark(m.symbol, m.last, m.changePct);
+                  const pts =
+                    m.changePct == null ? null : seededSpark(m.symbol, m.last, m.changePct);
                   const up = m.changePct != null && m.changePct >= 0;
                   const isSel = selected?.symbol === m.symbol;
                   const isFav = favs.has(m.symbol);
@@ -253,7 +312,9 @@ function MarketsPage() {
                           }}
                           className="text-muted-foreground/60 hover:text-status-warn"
                         >
-                          <Star className={cn("h-3 w-3", isFav && "fill-status-warn text-status-warn")} />
+                          <Star
+                            className={cn("h-3 w-3", isFav && "fill-status-warn text-status-warn")}
+                          />
                         </button>
                       </td>
                       <td className="px-2 py-1.5">
@@ -266,19 +327,37 @@ function MarketsPage() {
                           />
                           <span className="num font-semibold tracking-tight">{m.symbol}</span>
                           {!m.tradingPermitted && (
-                            <span className="rounded-sm bg-status-crit/15 px-1 text-[9px] font-bold text-status-crit">LOCK</span>
+                            <span className="rounded-sm bg-status-crit/15 px-1 text-[9px] font-bold text-status-crit">
+                              LOCK
+                            </span>
                           )}
                         </div>
                       </td>
                       <td className="num px-2 py-1.5 text-right">{fmtPrice(m.bid, 5)}</td>
-                      <td className="num px-2 py-1.5 text-right text-muted-foreground">{fmtPrice(m.ask, 5)}</td>
+                      <td className="num px-2 py-1.5 text-right text-muted-foreground">
+                        {fmtPrice(m.ask, 5)}
+                      </td>
                       <td className="num px-2 py-1.5 text-right text-muted-foreground">
                         {fmtNum(m.spread * pipValue(m), 1)}
                         <span className="ml-0.5 text-[9px] opacity-60">p</span>
                       </td>
-                      <td className={cn("num px-2 py-1.5 text-right font-medium", m.changePct == null ? "text-muted-foreground" : up ? "text-profit" : "text-loss")}>
+                      <td
+                        className={cn(
+                          "num px-2 py-1.5 text-right font-medium",
+                          m.changePct == null
+                            ? "text-muted-foreground"
+                            : up
+                              ? "text-profit"
+                              : "text-loss",
+                        )}
+                      >
                         <span className="inline-flex items-center gap-0.5">
-                          {m.changePct != null && (up ? <ArrowUp className="h-2.5 w-2.5" /> : <ArrowDown className="h-2.5 w-2.5" />)}
+                          {m.changePct != null &&
+                            (up ? (
+                              <ArrowUp className="h-2.5 w-2.5" />
+                            ) : (
+                              <ArrowDown className="h-2.5 w-2.5" />
+                            ))}
                           {fmtPct(m.changePct == null ? null : Math.abs(m.changePct), 2)}
                         </span>
                       </td>
@@ -333,9 +412,7 @@ function MarketsPage() {
         }
       >
         <div className="scan-grid relative h-72 overflow-hidden rounded-sm border border-panel-border bg-background">
-          {selected && (
-            <ChartMock symbol={selected} tf={tf} />
-          )}
+          {selected && <ChartMock symbol={selected} tf={tf} />}
         </div>
       </Panel>
     </div>
@@ -373,7 +450,12 @@ function SortTh({
 }
 
 function ChartMock({ symbol, tf }: { symbol: MarketSymbol; tf: string }) {
-  if (symbol.changePct == null) return <div className="flex h-full items-center justify-center text-xs text-muted-foreground">N/A</div>;
+  if (symbol.changePct == null)
+    return (
+      <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+        N/A
+      </div>
+    );
   const pts = seededSpark(symbol.symbol + tf, symbol.last, symbol.changePct);
   const min = Math.min(...pts);
   const max = Math.max(...pts);
@@ -382,14 +464,19 @@ function ChartMock({ symbol, tf }: { symbol: MarketSymbol; tf: string }) {
   const h = 260;
   const step = w / (pts.length - 1);
   const d = pts
-    .map((p, i) => `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - ((p - min) / span) * h * 0.85 - 15).toFixed(1)}`)
+    .map(
+      (p, i) =>
+        `${i === 0 ? "M" : "L"}${(i * step).toFixed(1)},${(h - ((p - min) / span) * h * 0.85 - 15).toFixed(1)}`,
+    )
     .join(" ");
   const up = symbol.changePct >= 0;
   return (
     <>
       <div className="absolute left-2 top-2 flex items-baseline gap-2">
         <span className="num text-lg font-semibold">{fmtPrice(symbol.last)}</span>
-        <span className={cn("num text-xs", up ? "text-profit" : "text-loss")}>{fmtPct(symbol.changePct)}</span>
+        <span className={cn("num text-xs", up ? "text-profit" : "text-loss")}>
+          {fmtPct(symbol.changePct)}
+        </span>
       </div>
       <div className="absolute right-2 top-2 text-[10px] uppercase tracking-widest text-muted-foreground">
         {tf} · mock feed
@@ -439,9 +526,7 @@ function SymbolDetail({ symbol }: { symbol: MarketSymbol }) {
   const maxVol = Math.max(...ladder.flatMap((l) => [l.bidVol, l.askVol]));
 
   return (
-    <Panel
-      bodyClassName="p-0"
-    >
+    <Panel bodyClassName="p-0">
       <div className="flex items-start justify-between gap-2 border-b border-panel-border px-3 py-2">
         <div className="min-w-0">
           <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -473,11 +558,15 @@ function SymbolDetail({ symbol }: { symbol: MarketSymbol }) {
         </div>
         <div className="p-2.5">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Ask</div>
-          <div className="num mt-0.5 text-base font-semibold text-profit">{fmtPrice(symbol.ask)}</div>
+          <div className="num mt-0.5 text-base font-semibold text-profit">
+            {fmtPrice(symbol.ask)}
+          </div>
         </div>
         <div className="p-2.5">
           <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Change</div>
-          <div className={cn("num mt-0.5 text-base font-semibold", up ? "text-profit" : "text-loss")}>
+          <div
+            className={cn("num mt-0.5 text-base font-semibold", up ? "text-profit" : "text-loss")}
+          >
             {fmtPct(symbol.changePct)}
           </div>
         </div>
@@ -539,7 +628,10 @@ function SymbolDetail({ symbol }: { symbol: MarketSymbol }) {
         </div>
         <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-[11.5px]">
           {rows.map(([k, v]) => (
-            <div key={k} className="flex items-center justify-between border-b border-panel-border/40 py-1">
+            <div
+              key={k}
+              className="flex items-center justify-between border-b border-panel-border/40 py-1"
+            >
               <dt className="text-muted-foreground">{k}</dt>
               <dd className="num">{v}</dd>
             </div>
@@ -551,7 +643,12 @@ function SymbolDetail({ symbol }: { symbol: MarketSymbol }) {
           </span>
           <span>
             Trading{" "}
-            <span className={cn("num font-semibold", symbol.tradingPermitted ? "text-status-ok" : "text-status-crit")}>
+            <span
+              className={cn(
+                "num font-semibold",
+                symbol.tradingPermitted ? "text-status-ok" : "text-status-crit",
+              )}
+            >
               {symbol.tradingPermitted ? "Permitted" : "Blocked"}
             </span>
           </span>

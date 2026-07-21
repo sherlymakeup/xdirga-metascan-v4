@@ -304,7 +304,8 @@ function createHarness(opts?: {
       return jsonResponse(hs);
     }
     if (path === "/capabilities") return jsonResponse(capabilitiesBody());
-    if (path === "/snapshot") return jsonResponse(await (opts?.snapshot?.() ?? snapshotEnvelope(opts?.snapshotSeq ?? 10)));
+    if (path === "/snapshot")
+      return jsonResponse(await (opts?.snapshot?.() ?? snapshotEnvelope(opts?.snapshotSeq ?? 10)));
     return jsonResponse({ error: "not found" }, 404);
   };
 
@@ -384,7 +385,9 @@ describe("BLOCKER: public refresh paths validate through the lifecycle", () => {
     const h = createHarness({
       snapshot: () => {
         snapshotCall += 1;
-        return snapshotCall === 1 ? snapshotEnvelope(10) : snapshotEnvelope(20, "boot-1", "other-runtime");
+        return snapshotCall === 1
+          ? snapshotEnvelope(10)
+          : snapshotEnvelope(20, "boot-1", "other-runtime");
       },
     });
     const adapter = new HttpRuntimeAdapter(h.config);
@@ -450,12 +453,14 @@ describe("MAJOR: boot lineage does not deadlock after a valid new boot", () => {
       },
       snapshot: () => {
         snapshotCall += 1;
-        return snapshotCall === 1
-          ? snapshotEnvelope(50, "boot-1")
-          : snapshotEnvelope(1, "boot-2");
+        return snapshotCall === 1 ? snapshotEnvelope(50, "boot-1") : snapshotEnvelope(1, "boot-2");
       },
     });
-    const adapter = new HttpRuntimeAdapter({ ...h.config, maxReconnectAttempts: 3, initialReconnectDelayMs: 1 });
+    const adapter = new HttpRuntimeAdapter({
+      ...h.config,
+      maxReconnectAttempts: 3,
+      initialReconnectDelayMs: 1,
+    });
     await adapter.connect();
     await flush();
     expect(adapter.getSnapshotEnvelope().metadata.bootId).toBe("boot-1");
@@ -505,7 +510,10 @@ describe("MAJOR: sticky reopenStream survives a coalesced refresh-false follow-u
     await flush();
     expect(snapshots).toBe(2);
 
-    es.emitNamed("system.resync.required", { type: "system.resync.required", reason: "GAP_DETECTED" });
+    es.emitNamed("system.resync.required", {
+      type: "system.resync.required",
+      reason: "GAP_DETECTED",
+    });
     await flush();
 
     resolveSnapshot!(snapshotEnvelope(11));

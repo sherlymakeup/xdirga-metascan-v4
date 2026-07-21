@@ -15,7 +15,8 @@ export function ProdFixtureGuard() {
       role="alert"
       className="border-b border-status-crit/60 bg-status-crit/15 px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-widest text-status-crit"
     >
-      ⚠ Production build is using DEVELOPMENT_FIXTURE data · no local runtime connected · no broker linked · this deployment must be reconfigured
+      ⚠ Production build is using DEVELOPMENT_FIXTURE data · no local runtime connected · no broker
+      linked · this deployment must be reconfigured
     </div>
   );
 }

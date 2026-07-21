@@ -17,13 +17,7 @@ import type { FrontendDataSource } from "../runtime-types";
 // Severity
 // -----------------------------------------------------------------------------
 
-export type EventSeverity =
-  | "TRACE"
-  | "DEBUG"
-  | "INFO"
-  | "WARNING"
-  | "ERROR"
-  | "CRITICAL";
+export type EventSeverity = "TRACE" | "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 
 export const SEVERITY_ORDER: Record<EventSeverity, number> = {
   TRACE: 0,
@@ -80,7 +74,6 @@ export const RUNTIME_EVENT_TYPES = [
 
   "trade.closed",
 
-
   "strategy.state.changed",
   "strategy.signal.generated",
   "strategy.decision.created",
@@ -131,10 +124,7 @@ export const eventSeveritySchema = z.enum([
   "ERROR",
   "CRITICAL",
 ]);
-export const frontendDataSourceSchema = z.enum([
-  "DEVELOPMENT_FIXTURE",
-  "LOCAL_RUNTIME",
-]);
+export const frontendDataSourceSchema = z.enum(["DEVELOPMENT_FIXTURE", "LOCAL_RUNTIME"]);
 
 // -----------------------------------------------------------------------------
 // Envelope

@@ -116,8 +116,7 @@ export interface ReconciliationRunProjection {
   source: RuntimeEventEnvelope["source"];
 }
 
-export const reconciliationRunProjectionStore =
-  new ProjectionStore<ReconciliationRunProjection>();
+export const reconciliationRunProjectionStore = new ProjectionStore<ReconciliationRunProjection>();
 
 // -----------------------------------------------------------------------------
 // Position autopilot management projection
@@ -147,8 +146,7 @@ export function applyManagementEvent(
 ): PositionManagementProjection | undefined {
   if (!env.type.startsWith("position.management.")) return prev;
   const payload = (env.payload ?? {}) as Record<string, unknown>;
-  const positionId =
-    env.positionId ?? (payload.positionId as string | undefined);
+  const positionId = env.positionId ?? (payload.positionId as string | undefined);
   if (!positionId) return prev;
   const at = env.receivedAt ?? env.emittedAt;
 
@@ -178,9 +176,10 @@ export function applyManagementEvent(
       };
     }
     if (action === "TRAILING_MOVE") {
-      const newStop = typeof detail.newStopPrice === "number"
-        ? (detail.newStopPrice as number)
-        : prev.trailing.currentStopPrice;
+      const newStop =
+        typeof detail.newStopPrice === "number"
+          ? (detail.newStopPrice as number)
+          : prev.trailing.currentStopPrice;
       return {
         ...prev,
         trailing: {
@@ -267,8 +266,7 @@ function project(env: RuntimeEventEnvelope) {
 
   if (env.type.startsWith("position.management.")) {
     const positionId =
-      env.positionId ??
-      ((env.payload as { positionId?: string } | undefined)?.positionId);
+      env.positionId ?? (env.payload as { positionId?: string } | undefined)?.positionId;
     if (positionId) {
       positionManagementProjectionStore.upsert(positionId, (prev) =>
         applyManagementEvent(prev, env),
@@ -277,12 +275,10 @@ function project(env: RuntimeEventEnvelope) {
     // fall through so the position projection also records lastEventType.
   }
 
-
   if (env.orderId && env.type.startsWith("order.")) {
     orderProjectionStore.upsert(env.orderId, (prev) => ({
       orderId: env.orderId!,
-      symbol:
-        (env.payload as { symbol?: string } | undefined)?.symbol ?? prev?.symbol,
+      symbol: (env.payload as { symbol?: string } | undefined)?.symbol ?? prev?.symbol,
       status:
         (env.payload as { status?: string } | undefined)?.status ??
         env.type.split(".")[1] ??
@@ -292,7 +288,7 @@ function project(env: RuntimeEventEnvelope) {
       correlationId: env.correlationId ?? prev?.correlationId,
       commandId: env.commandId ?? prev?.commandId,
       executionUnknown:
-        env.type === "order.execution_unknown" ? true : prev?.executionUnknown ?? false,
+        env.type === "order.execution_unknown" ? true : (prev?.executionUnknown ?? false),
       source: env.source,
     }));
   }
@@ -300,19 +296,15 @@ function project(env: RuntimeEventEnvelope) {
   if (env.positionId && env.type.startsWith("position.")) {
     positionProjectionStore.upsert(env.positionId, (prev) => ({
       positionId: env.positionId!,
-      symbol:
-        (env.payload as { symbol?: string } | undefined)?.symbol ?? prev?.symbol,
+      symbol: (env.payload as { symbol?: string } | undefined)?.symbol ?? prev?.symbol,
       protection:
-        (env.payload as { protection?: string } | undefined)?.protection ??
-        prev?.protection,
+        (env.payload as { protection?: string } | undefined)?.protection ?? prev?.protection,
       lastEventType: env.type,
       lastEventAt: at,
       correlationId: env.correlationId ?? prev?.correlationId,
       commandId: env.commandId ?? prev?.commandId,
       executionUnknown:
-        env.type === "position.execution_unknown"
-          ? true
-          : prev?.executionUnknown ?? false,
+        env.type === "position.execution_unknown" ? true : (prev?.executionUnknown ?? false),
       source: env.source,
     }));
   }
@@ -355,10 +347,7 @@ function project(env: RuntimeEventEnvelope) {
     });
 
     // Release EXECUTION_UNKNOWN locks scoped to the reconciled entity, if any.
-    if (
-      env.type === "reconciliation.issue.resolved" ||
-      env.type === "reconciliation.completed"
-    ) {
+    if (env.type === "reconciliation.issue.resolved" || env.type === "reconciliation.completed") {
       const payload = env.payload as
         | { entityId?: string; resolvedEntityIds?: string[] }
         | undefined;
@@ -464,4 +453,3 @@ export function usePositionManagementProjection(
     () => (positionId ? positionManagementProjectionStore.get(positionId) : undefined),
   );
 }
-

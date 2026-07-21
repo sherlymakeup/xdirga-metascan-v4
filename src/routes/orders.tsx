@@ -6,7 +6,10 @@ import { Panel } from "@/components/cockpit/panel";
 import { StatusBadge, type StatusTone } from "@/components/cockpit/status-badge";
 import { EmptyState } from "@/components/cockpit/states";
 import { CommandButton } from "@/components/commands/CommandButton";
-import { BrokerEnvironmentSummary, FixtureSourceNotice } from "@/components/runtime/environment-badges";
+import {
+  BrokerEnvironmentSummary,
+  FixtureSourceNotice,
+} from "@/components/runtime/environment-badges";
 import { fmtNum, fmtPrice, relativeTime } from "@/lib/format";
 import type { Order, OrderStatus } from "@/lib/types";
 
@@ -33,12 +36,24 @@ const statusTone = (s: OrderStatus): StatusTone => {
 
 const TABS: Array<{ key: string; label: string; match: (o: Order) => boolean }> = [
   { key: "all", label: "All", match: () => true },
-  { key: "active", label: "Active", match: (o) => ["SUBMITTED", "ACKNOWLEDGED", "PARTIALLY_FILLED"].includes(o.status) },
-  { key: "pending", label: "Pending", match: (o) => o.type !== "MARKET" && o.status === "ACKNOWLEDGED" },
+  {
+    key: "active",
+    label: "Active",
+    match: (o) => ["SUBMITTED", "ACKNOWLEDGED", "PARTIALLY_FILLED"].includes(o.status),
+  },
+  {
+    key: "pending",
+    label: "Pending",
+    match: (o) => o.type !== "MARKET" && o.status === "ACKNOWLEDGED",
+  },
   { key: "filled", label: "Filled", match: (o) => o.status === "FILLED" },
   { key: "cancelled", label: "Cancelled", match: (o) => o.status === "CANCELLED" },
   { key: "rejected", label: "Rejected", match: (o) => o.status === "REJECTED" },
-  { key: "unknown", label: "Unknown", match: (o) => o.status === "EXECUTION_UNKNOWN" || o.status === "TIMED_OUT" },
+  {
+    key: "unknown",
+    label: "Unknown",
+    match: (o) => o.status === "EXECUTION_UNKNOWN" || o.status === "TIMED_OUT",
+  },
 ];
 
 function OrdersPage() {
@@ -52,34 +67,31 @@ function OrdersPage() {
   return (
     <>
       <div className="mx-auto max-w-[1600px] space-y-3 p-3 md:p-4">
-      <BrokerEnvironmentSummary />
-      <FixtureSourceNotice entity="order" />
-      <Panel
-        title="Order Blotter"
-        subtitle={`${orders.length} of ${snap.orders.length}`}
-        toolbar={
-          <CommandButton
-            kind="order.cancelAll"
-            label="Cancel all"
-            variant="danger"
-            title="Cancel all working orders"
-            description="Cancels every SUBMITTED / ACKNOWLEDGED / PARTIALLY_FILLED order at the broker."
-            impactSummary={
-              <ul className="space-y-0.5">
-                <li>
-                  Working orders:{" "}
-                  <span className="num">
-                    {snap.orders.filter(isCancellable).length}
-                  </span>
-                </li>
-                <li>Filled portions are not reversed.</li>
-              </ul>
-            }
-          />
-        }
-        bodyClassName="p-0"
-      >
-
+        <BrokerEnvironmentSummary />
+        <FixtureSourceNotice entity="order" />
+        <Panel
+          title="Order Blotter"
+          subtitle={`${orders.length} of ${snap.orders.length}`}
+          toolbar={
+            <CommandButton
+              kind="order.cancelAll"
+              label="Cancel all"
+              variant="danger"
+              title="Cancel all working orders"
+              description="Cancels every SUBMITTED / ACKNOWLEDGED / PARTIALLY_FILLED order at the broker."
+              impactSummary={
+                <ul className="space-y-0.5">
+                  <li>
+                    Working orders:{" "}
+                    <span className="num">{snap.orders.filter(isCancellable).length}</span>
+                  </li>
+                  <li>Filled portions are not reversed.</li>
+                </ul>
+              }
+            />
+          }
+          bodyClassName="p-0"
+        >
           <div className="flex flex-wrap items-center gap-1 border-b border-panel-border px-2 py-1.5">
             {TABS.map((t) => {
               const count = snap.orders.filter(t.match).length;
@@ -88,7 +100,9 @@ function OrdersPage() {
                   key={t.key}
                   onClick={() => setTab(t.key)}
                   className={`inline-flex items-center gap-1 rounded-sm px-2 py-1 text-[11px] ${
-                    tab === t.key ? "bg-muted text-foreground" : "text-muted-foreground hover:bg-muted/40"
+                    tab === t.key
+                      ? "bg-muted text-foreground"
+                      : "text-muted-foreground hover:bg-muted/40"
                   }`}
                 >
                   {t.label}
@@ -99,7 +113,10 @@ function OrdersPage() {
           </div>
           <div className="overflow-x-auto">
             {orders.length === 0 ? (
-              <EmptyState title="No orders in this view" description="Try another tab or adjust filters." />
+              <EmptyState
+                title="No orders in this view"
+                description="Try another tab or adjust filters."
+              />
             ) : (
               <table className="w-full text-[11.5px]">
                 <thead className="border-b border-panel-border bg-panel-elevated text-[10px] uppercase tracking-wider text-muted-foreground">
@@ -127,10 +144,14 @@ function OrdersPage() {
                       className="cursor-pointer border-b border-panel-border/60 hover:bg-muted/40"
                     >
                       <td className="num px-2 py-1.5">{o.id}</td>
-                      <td className="num px-2 py-1.5 text-muted-foreground">{o.brokerTicket ?? "—"}</td>
+                      <td className="num px-2 py-1.5 text-muted-foreground">
+                        {o.brokerTicket ?? "—"}
+                      </td>
                       <td className="num px-2 py-1.5 font-semibold">{o.symbol}</td>
                       <td className="px-2 py-1.5">
-                        <StatusBadge tone={o.side === "BUY" ? "ok" : "crit"} size="sm">{o.side}</StatusBadge>
+                        <StatusBadge tone={o.side === "BUY" ? "ok" : "crit"} size="sm">
+                          {o.side}
+                        </StatusBadge>
                       </td>
                       <td className="num px-2 py-1.5">{o.type}</td>
                       <td className="num px-2 py-1.5 text-right">{fmtNum(o.volume, 2)}</td>
@@ -145,11 +166,10 @@ function OrdersPage() {
                           {o.status.replace("_", " ")}
                         </StatusBadge>
                       </td>
-                      <td className="num px-2 py-1.5 text-muted-foreground">{relativeTime(o.updatedAt)}</td>
-                      <td
-                        className="px-2 py-1.5 text-right"
-                        onClick={(e) => e.stopPropagation()}
-                      >
+                      <td className="num px-2 py-1.5 text-muted-foreground">
+                        {relativeTime(o.updatedAt)}
+                      </td>
+                      <td className="px-2 py-1.5 text-right" onClick={(e) => e.stopPropagation()}>
                         {isCancellable(o) && (
                           <CommandButton
                             kind="order.cancel"
@@ -197,7 +217,11 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
                 description={`Cancel ${order.side} ${order.type} ${fmtNum(order.volume, 2)} ${order.symbol}.`}
               />
             )}
-            <button onClick={onClose} className="rounded-sm border border-panel-border p-1 hover:bg-muted" aria-label="Close">
+            <button
+              onClick={onClose}
+              className="rounded-sm border border-panel-border p-1 hover:bg-muted"
+              aria-label="Close"
+            >
               <X className="h-3.5 w-3.5" />
             </button>
           </div>
@@ -207,7 +231,8 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
           <div className="border-b border-status-crit/40 bg-status-crit/10 p-3 text-[11.5px] text-status-crit">
             <div className="font-semibold uppercase tracking-wider">EXECUTION_UNKNOWN</div>
             <p className="mt-1">
-              This order timed out awaiting broker acknowledgement. Actual broker state is uncertain.
+              This order timed out awaiting broker acknowledgement. Actual broker state is
+              uncertain.
               <strong> Do not retry.</strong> Run reconciliation from the Runtime page to resolve.
             </p>
           </div>
@@ -243,7 +268,10 @@ function OrderDrawer({ order, onClose }: { order: Order; onClose: () => void }) 
           </div>
           <ol className="space-y-1.5">
             {order.lifecycle.map((e, i) => (
-              <li key={i} className="grid grid-cols-[auto_1fr_auto] items-baseline gap-2 text-[11px]">
+              <li
+                key={i}
+                className="grid grid-cols-[auto_1fr_auto] items-baseline gap-2 text-[11px]"
+              >
                 <StatusBadge tone={e.step === "REJECTED" ? "crit" : "info"} size="sm">
                   {String(e.step).replace("_", " ")}
                 </StatusBadge>

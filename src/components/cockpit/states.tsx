@@ -16,7 +16,9 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-col items-center justify-center gap-2 py-8 text-center", className)}>
+    <div
+      className={cn("flex flex-col items-center justify-center gap-2 py-8 text-center", className)}
+    >
       <div className="grid h-9 w-9 place-items-center rounded-full bg-muted text-muted-foreground">
         {icon ?? <Info className="h-4 w-4" />}
       </div>
@@ -72,7 +74,10 @@ export function StaleDataOverlay({
         Data stale — last update {ageSec}s ago. Trading decisions may be based on outdated values.
       </span>
       {onRefresh && (
-        <button onClick={onRefresh} className="rounded-sm border border-status-warn/40 px-1.5 py-0.5">
+        <button
+          onClick={onRefresh}
+          className="rounded-sm border border-status-warn/40 px-1.5 py-0.5"
+        >
           Refresh
         </button>
       )}

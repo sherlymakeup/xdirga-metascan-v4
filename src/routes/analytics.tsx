@@ -38,7 +38,11 @@ function AnalyticsPage() {
     ["Max drawdown", fmtPct(snap.account.maxDrawdown)],
   ];
   const curve = snap.equityCurve;
-  const sparkPath = buildSparkPath(curve.map((p) => p.equity), 640, 60);
+  const sparkPath = buildSparkPath(
+    curve.map((p) => p.equity),
+    640,
+    60,
+  );
   const firstEq = curve[0]?.equity ?? 0;
   const lastEq = curve[curve.length - 1]?.equity ?? 0;
   const delta = lastEq - firstEq;
@@ -49,14 +53,29 @@ function AnalyticsPage() {
       <Panel title="Equity curve" subtitle={`${curve.length} samples · session`}>
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Equity now</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              Equity now
+            </div>
             <div className="num text-2xl font-semibold">{fmtMoney(lastEq)}</div>
-            <div className={`num mt-0.5 text-[11.5px] font-medium ${delta >= 0 ? "text-profit" : "text-loss"}`}>
-              {delta >= 0 ? "+" : ""}{fmtMoney(delta)} ({fmtPct(deltaPct / 100)})
+            <div
+              className={`num mt-0.5 text-[11.5px] font-medium ${delta >= 0 ? "text-profit" : "text-loss"}`}
+            >
+              {delta >= 0 ? "+" : ""}
+              {fmtMoney(delta)} ({fmtPct(deltaPct / 100)})
             </div>
           </div>
-          <svg viewBox="0 0 640 60" className="h-14 w-full max-w-[640px]" preserveAspectRatio="none">
-            <path d={sparkPath} fill="none" stroke="currentColor" strokeWidth="1.2" className={delta >= 0 ? "text-profit" : "text-loss"} />
+          <svg
+            viewBox="0 0 640 60"
+            className="h-14 w-full max-w-[640px]"
+            preserveAspectRatio="none"
+          >
+            <path
+              d={sparkPath}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.2"
+              className={delta >= 0 ? "text-profit" : "text-loss"}
+            />
           </svg>
         </div>
       </Panel>
@@ -77,9 +96,21 @@ function AnalyticsPage() {
         subtitle={`${stats.total} rows · ${journal.bySource.events} live · ${journal.bySource.history} history${journal.overwrittenByEvent > 0 ? ` · ${journal.overwrittenByEvent} overwritten by event` : ""}`}
       >
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          <StatTile label="Net PnL" value={fmtMoney(stats.netPnl)} tone={stats.netPnl >= 0 ? "ok" : "crit"} />
-          <StatTile label="Gross / Commission / Swap" value={`${fmtMoney(stats.grossPnl)} · ${fmtMoney(stats.commission)} · ${fmtMoney(stats.swap)}`} sub="net = gross + commission + swap" />
-          <StatTile label="Win rate" value={fmtPct(stats.winRate)} sub={`${stats.wins}W / ${stats.losses}L / ${stats.scratches}=`} />
+          <StatTile
+            label="Net PnL"
+            value={fmtMoney(stats.netPnl)}
+            tone={stats.netPnl >= 0 ? "ok" : "crit"}
+          />
+          <StatTile
+            label="Gross / Commission / Swap"
+            value={`${fmtMoney(stats.grossPnl)} · ${fmtMoney(stats.commission)} · ${fmtMoney(stats.swap)}`}
+            sub="net = gross + commission + swap"
+          />
+          <StatTile
+            label="Win rate"
+            value={fmtPct(stats.winRate)}
+            sub={`${stats.wins}W / ${stats.losses}L / ${stats.scratches}=`}
+          />
           <StatTile
             label="Avg R"
             value={stats.avgR === null ? "n/a" : `${fmtNum(stats.avgR, 2)}R`}
@@ -88,15 +119,25 @@ function AnalyticsPage() {
                 ? `${stats.rScored} scored · ${stats.naR} n/a R (excluded)`
                 : `${stats.rScored} scored`
             }
-            tone={stats.avgR !== null && stats.avgR >= 0 ? "ok" : stats.avgR === null ? "neutral" : "crit"}
+            tone={
+              stats.avgR !== null && stats.avgR >= 0
+                ? "ok"
+                : stats.avgR === null
+                  ? "neutral"
+                  : "crit"
+            }
           />
         </div>
 
         <div className="mt-3 rounded-sm border border-panel-border bg-panel-elevated p-3">
           <div className="mb-2 flex items-center justify-between">
-            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">R-multiple distribution</div>
+            <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+              R-multiple distribution
+            </div>
             {stats.naR > 0 && (
-              <StatusBadge tone="warn" size="sm">{stats.naR} n/a R excluded</StatusBadge>
+              <StatusBadge tone="warn" size="sm">
+                {stats.naR} n/a R excluded
+              </StatusBadge>
             )}
           </div>
           <div className="flex items-end gap-1.5">
@@ -110,7 +151,9 @@ function AnalyticsPage() {
                   />
                 </div>
                 <div className="num text-[10px] text-muted-foreground">{b.count}</div>
-                <div className="text-[9.5px] uppercase tracking-wider text-muted-foreground">{b.label}</div>
+                <div className="text-[9.5px] uppercase tracking-wider text-muted-foreground">
+                  {b.label}
+                </div>
               </div>
             ))}
           </div>
@@ -145,12 +188,26 @@ function AnalyticsPage() {
                     <td className="num px-2 py-1.5 text-muted-foreground">{t.tradeId}</td>
                     <td className="num px-2 py-1.5 font-semibold">{t.symbol}</td>
                     <td className="px-2 py-1.5">
-                      <StatusBadge tone={t.direction === "LONG" ? "ok" : "crit"} size="sm">{t.direction}</StatusBadge>
+                      <StatusBadge tone={t.direction === "LONG" ? "ok" : "crit"} size="sm">
+                        {t.direction}
+                      </StatusBadge>
                     </td>
-                    <td className={`num px-2 py-1.5 text-right ${t.grossPnl >= 0 ? "text-profit" : "text-loss"}`}>{fmtMoney(t.grossPnl)}</td>
-                    <td className="num px-2 py-1.5 text-right text-muted-foreground">{fmtMoney(t.commission)}</td>
-                    <td className="num px-2 py-1.5 text-right text-muted-foreground">{fmtMoney(t.swap)}</td>
-                    <td className={`num px-2 py-1.5 text-right font-semibold ${t.netPnl >= 0 ? "text-profit" : "text-loss"}`}>{fmtMoney(t.netPnl)}</td>
+                    <td
+                      className={`num px-2 py-1.5 text-right ${t.grossPnl >= 0 ? "text-profit" : "text-loss"}`}
+                    >
+                      {fmtMoney(t.grossPnl)}
+                    </td>
+                    <td className="num px-2 py-1.5 text-right text-muted-foreground">
+                      {fmtMoney(t.commission)}
+                    </td>
+                    <td className="num px-2 py-1.5 text-right text-muted-foreground">
+                      {fmtMoney(t.swap)}
+                    </td>
+                    <td
+                      className={`num px-2 py-1.5 text-right font-semibold ${t.netPnl >= 0 ? "text-profit" : "text-loss"}`}
+                    >
+                      {fmtMoney(t.netPnl)}
+                    </td>
                     <td className="num px-2 py-1.5 text-right">
                       {t.rMultiple === null ? (
                         <span className="text-muted-foreground">n/a</span>
@@ -197,7 +254,9 @@ function AnalyticsPage() {
                 <tr key={s.id} className="border-b border-panel-border/60">
                   <td className="px-3 py-1.5">{s.name}</td>
                   <td className="num px-2 py-1.5 text-right">{s.signalsToday}</td>
-                  <td className={`num px-2 py-1.5 text-right ${s.pnlToday >= 0 ? "text-profit" : "text-loss"}`}>
+                  <td
+                    className={`num px-2 py-1.5 text-right ${s.pnlToday >= 0 ? "text-profit" : "text-loss"}`}
+                  >
                     {fmtMoney(s.pnlToday)}
                   </td>
                   <td className="num px-2 py-1.5 text-right text-loss">{fmtPct(s.drawdown)}</td>

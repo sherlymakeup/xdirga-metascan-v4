@@ -46,10 +46,7 @@ export function roleAllows(role: OperatorRole, kind: RuntimeCommandKind): boolea
   if (role === "VIEWER") return false;
   if (role === "ADMIN") return true;
   if (role === "RISK_MANAGER") {
-    return (
-      OPERATOR_ALLOWED.includes(kind) ||
-      RISK_MANAGER_ONLY.includes(kind)
-    );
+    return OPERATOR_ALLOWED.includes(kind) || RISK_MANAGER_ONLY.includes(kind);
   }
   // OPERATOR
   return OPERATOR_ALLOWED.includes(kind);
@@ -83,7 +80,11 @@ export function useRoleCanRun(kind: RuntimeCommandKind): {
 } {
   const op = useOperator();
   return useMemo(
-    () => ({ allowed: roleAllows(op.role, kind), reason: roleBlockReason(op.role, kind), role: op.role }),
+    () => ({
+      allowed: roleAllows(op.role, kind),
+      reason: roleBlockReason(op.role, kind),
+      role: op.role,
+    }),
     [op.role, kind],
   );
 }
