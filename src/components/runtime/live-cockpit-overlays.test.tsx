@@ -189,4 +189,47 @@ describe("live cockpit overlays", () => {
     expect(runtimeTone("KILLED")).toBe("crit");
     expect(runtimeTone("READY")).toBe("ok");
   });
+
+  it("renders global degraded banner while runtime is ready", () => {
+    runtimeRef.current = { ...runtimeRef.current, state: "READY" };
+    operationalRef.current = {
+      state: "DEGRADED",
+      reasons: ["Broker data is delayed."],
+      recommendedActions: [],
+    };
+
+    const html = renderToStaticMarkup(<GlobalOperationalStateBanner />);
+
+    expect(html).toContain("Operational state: DEGRADED");
+  });
+
+  it("mutes global degraded banner while runtime strip is speaking", () => {
+    runtimeRef.current = { ...runtimeRef.current, state: "DEGRADED" };
+    operationalRef.current = {
+      state: "DEGRADED",
+      reasons: ["Runtime is degraded."],
+      recommendedActions: [],
+    };
+
+    expect(renderToStaticMarkup(<GlobalOperationalStateBanner />)).toBe("");
+  });
+
+  it("keeps global banner hidden for normal operation", () => {
+    runtimeRef.current = { ...runtimeRef.current, state: "READY" };
+    operationalRef.current = { state: "NORMAL", reasons: [], recommendedActions: [] };
+
+    expect(renderToStaticMarkup(<GlobalOperationalStateBanner />)).toBe("");
+  });
+
+  it.each(["RESTRICTED", "BLOCKED", "DISCONNECTED", "SAFE_MODE"] as const)(
+    "keeps global %s banner visible",
+    (state) => {
+      runtimeRef.current = { ...runtimeRef.current, state: "READY" };
+      operationalRef.current = { state, reasons: [state], recommendedActions: [] };
+
+      expect(renderToStaticMarkup(<GlobalOperationalStateBanner />)).toContain(
+        `Operational state: ${state.replace("_", " ")}`,
+      );
+    },
+  );
 });

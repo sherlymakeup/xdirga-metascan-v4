@@ -2,6 +2,7 @@
 // Reads the centralized resolver — never invents its own rules.
 
 import { AlertOctagon, ShieldAlert } from "lucide-react";
+import { useSnapshot } from "@/lib/adapters/runtime";
 import { useGlobalOperationalState } from "@/lib/runtime/state/operational-state";
 import { useExecutionUnknownLocks } from "@/lib/runtime/state/execution-unknown-lock";
 import { useReconciliationRestriction } from "@/lib/runtime/state/reconciliation-restrictions";
@@ -20,7 +21,8 @@ const TONE = {
 
 export function GlobalOperationalStateBanner() {
   const op = useGlobalOperationalState();
-  if (op.state === "NORMAL" || op.state === "DEGRADED") return null;
+  const runtimeState = useSnapshot().runtime.state;
+  if (op.state === "NORMAL" || (op.state === "DEGRADED" && runtimeState !== "READY")) return null;
   return (
     <div className={`border-b px-3 py-2 text-[11.5px] md:px-4 ${TONE[op.state]}`}>
       <div className="mx-auto flex max-w-[1600px] items-start gap-2">
