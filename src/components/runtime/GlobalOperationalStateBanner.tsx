@@ -20,7 +20,7 @@ const TONE = {
 
 export function GlobalOperationalStateBanner() {
   const op = useGlobalOperationalState();
-  if (op.state === "NORMAL") return null;
+  if (op.state === "NORMAL" || op.state === "DEGRADED") return null;
   return (
     <div className={`border-b px-3 py-2 text-[11.5px] md:px-4 ${TONE[op.state]}`}>
       <div className="mx-auto flex max-w-[1600px] items-start gap-2">

@@ -24,6 +24,7 @@ import {
 } from "@/components/runtime/environment-badges";
 import type { ScenarioKey } from "@/lib/types";
 import { DEVELOPMENT_FEATURES_ENABLED } from "@/lib/runtime/dev-flags";
+import { useEventHistory } from "@/lib/runtime/events/event-store";
 
 function useNow(ms = 1000) {
   const [now, setNow] = useState(() => new Date());
@@ -37,6 +38,7 @@ function useNow(ms = 1000) {
 export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void }) {
   const snap = useSnapshot();
   const scenario = useScenario();
+  const events = useEventHistory();
   const now = useNow();
   const [hydrated, setHydrated] = useState(false);
 
@@ -53,6 +55,17 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
     : null;
   const brokerLatency = snap.broker.avgLatencyMs == null ? "—" : `${snap.broker.avgLatencyMs}ms`;
   const uptime = snap.runtime.uptimeSec == null ? "—" : fmtDuration(snap.runtime.uptimeSec);
+  const healthTransition = events.find((event) => {
+    if (event.type !== "runtime.health.changed" || !event.payload || typeof event.payload !== "object") {
+      return false;
+    }
+    return (event.payload as { state?: unknown }).state === snap.runtime.state;
+  });
+  const healthPayload = healthTransition?.payload as { reasons?: unknown } | undefined;
+  const healthReasons = Array.isArray(healthPayload?.reasons)
+    ? healthPayload.reasons.filter((reason): reason is string => typeof reason === "string")
+    : [];
+  const changedAt = snap.runtime.stateChangedAt ?? healthTransition?.receivedAt;
 
   return (
     <header className="sticky top-0 z-30 border-b border-panel-border bg-background/95 backdrop-blur">
@@ -163,28 +176,30 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
         </div>
       </div>
 
-      {snap.runtime.state !== "READY" && (
-        <div
-          className={`flex items-center gap-2 border-t px-3 py-1.5 text-[11.5px] md:px-4 ${
-            snap.runtime.state === "KILLED" || snap.runtime.state === "ERROR"
-              ? "border-status-crit/40 bg-status-crit/10 text-status-crit"
-              : snap.runtime.state === "PAUSED" || snap.runtime.state === "STOPPED"
-                ? "border-panel-border bg-muted text-muted-foreground"
-                : "border-status-warn/40 bg-status-warn/10 text-status-warn"
-          }`}
-        >
-          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-          <span className="min-w-0 truncate">
-            <span className="font-semibold uppercase tracking-wider">{snap.runtime.state}</span> —{" "}
-            {snap.runtime.stateReason}
-          </span>
-          <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
-            {snap.runtime.stateChangedAt
-              ? relativeTime(snap.runtime.stateChangedAt, now.toISOString())
-              : "—"}
-          </span>
-        </div>
-      )}
+      <div
+        data-status-strip
+        className={`flex h-7 items-center gap-2 border-t px-3 text-[11.5px] md:px-4 ${
+          snap.runtime.state === "KILLED" || snap.runtime.state === "ERROR"
+            ? "border-status-crit/40 bg-status-crit/10 text-status-crit"
+            : snap.runtime.state === "DEGRADED"
+              ? "border-status-warn/30 bg-status-warn/5 text-status-warn"
+              : "border-panel-border bg-background text-muted-foreground"
+        }`}
+      >
+        {snap.runtime.state !== "READY" && (
+          <div data-operational-banner className="flex min-w-0 flex-1 items-center gap-2">
+            <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+            <span className="min-w-0 truncate">
+              <span className="font-semibold uppercase tracking-wider">{snap.runtime.state}</span> —{" "}
+              {snap.runtime.stateReason}
+              {healthReasons.length > 0 ? ` (${healthReasons.join(", ")})` : ""}
+            </span>
+            <span className="ml-auto shrink-0 text-[10.5px] text-muted-foreground">
+              sejak {changedAt ? relativeTime(changedAt, now.toISOString()) : "—"}
+            </span>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
