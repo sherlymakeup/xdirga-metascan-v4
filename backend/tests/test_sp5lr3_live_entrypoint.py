@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import time
 from pathlib import Path
 
@@ -14,7 +15,14 @@ TOKEN = "TEST-TOKEN-NOT-SECRET"
 BOT_MAGIC = 240101
 
 
-def _write_config(tmp_path: Path, *, api_token: str = TOKEN) -> Path:
+def _write_config(
+    tmp_path: Path,
+    *,
+    api_token: str = TOKEN,
+    mt5_login: str = "",
+    mt5_password: str = "",
+    mt5_server: str = "",
+) -> Path:
     config_path = tmp_path / "config.toml"
     config_path.write_text(
         """[runtime]
@@ -33,7 +41,13 @@ watchlist = ["XAUUSD"]
 """,
         encoding="utf-8",
     )
-    (tmp_path / ".env").write_text(f"API_TOKEN={api_token}\n", encoding="utf-8")
+    (tmp_path / ".env").write_text(
+        f"MT5_LOGIN={mt5_login}\n"
+        f"MT5_PASSWORD={mt5_password}\n"
+        f"MT5_SERVER={mt5_server}\n"
+        f"API_TOKEN={api_token}\n",
+        encoding="utf-8",
+    )
     return config_path
 
 
@@ -119,6 +133,58 @@ def test_empty_api_token_exits_nonzero(tmp_path: Path, monkeypatch: pytest.Monke
 
     assert exc.value.code != 0
     assert "API_TOKEN" in str(exc.value)
+    assert str(tmp_path / ".env") in str(exc.value)
+
+
+def test_env_file_credentials_bridge_without_process_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+):
+    values = {
+        "MT5_LOGIN": "FILE-LOGIN-SENTINEL",
+        "MT5_PASSWORD": "FILE-PASSWORD-SENTINEL",
+        "MT5_SERVER": "FILE-SERVER-SENTINEL",
+    }
+    config_path = _write_config(
+        tmp_path,
+        mt5_login=values["MT5_LOGIN"],
+        mt5_password=values["MT5_PASSWORD"],
+        mt5_server=values["MT5_SERVER"],
+    )
+    for name in values:
+        monkeypatch.delenv(name, raising=False)
+
+    app = build_live_app(config_path=config_path, mt5_module=FakeMt5())
+
+    assert app is not None
+    for name, value in values.items():
+        assert os.environ[name] == value
+        assert value not in caplog.text
+
+
+def test_process_env_wins_over_env_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    config_path = _write_config(
+        tmp_path,
+        mt5_login="FILE-LOGIN-SENTINEL",
+        mt5_password="FILE-PASSWORD-SENTINEL",
+        mt5_server="FILE-SERVER-SENTINEL",
+    )
+    process_values = {
+        "MT5_LOGIN": "PROCESS-LOGIN-SENTINEL",
+        "MT5_PASSWORD": "PROCESS-PASSWORD-SENTINEL",
+        "MT5_SERVER": "PROCESS-SERVER-SENTINEL",
+    }
+    for name, value in process_values.items():
+        monkeypatch.setenv(name, value)
+
+    build_live_app(config_path=config_path, mt5_module=FakeMt5())
+
+    for name, value in process_values.items():
+        assert os.environ[name] == value
 
 
 def test_missing_mt5_env_names_only(
@@ -137,6 +203,8 @@ def test_missing_mt5_env_names_only(
     output = f"{exc.value} {caplog.text}"
     assert exc.value.code != 0
     assert "MT5_SERVER" in output
+    assert "copy backend/.env.example ke backend/.env lalu isi" in output
+    assert str(tmp_path / ".env") in output
     assert "LOGIN-SENTINEL" not in output
     assert "PASSWORD-SENTINEL" not in output
 

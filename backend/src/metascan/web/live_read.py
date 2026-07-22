@@ -21,18 +21,25 @@ def build_live_app(
     except (ConfigError, OSError, ValueError) as exc:
         raise SystemExit(f"config load gagal: {exc}") from exc
 
+    env_path = Path(config_path or "config.toml").parent / ".env"
     if not cfg.credentials.api_token.strip():
-        raise SystemExit(
-            "API_TOKEN kosong di backend/.env — dashboard auth wajib"
-        )
+        raise SystemExit(f"API_TOKEN kosong di {env_path} — dashboard auth wajib")
 
-    missing = [
-        name
-        for name in ("MT5_LOGIN", "MT5_PASSWORD", "MT5_SERVER")
-        if not os.environ.get(name, "").strip()
-    ]
+    credentials = {
+        "MT5_LOGIN": cfg.credentials.mt5_login,
+        "MT5_PASSWORD": cfg.credentials.mt5_password,
+        "MT5_SERVER": cfg.credentials.mt5_server,
+    }
+    for name, value in credentials.items():
+        if not os.environ.get(name, "").strip() and value.strip():
+            os.environ[name] = value
+
+    missing = [name for name in credentials if not os.environ.get(name, "").strip()]
     if missing:
-        raise SystemExit(f"env MT5 wajib belum lengkap: {', '.join(missing)}")
+        raise SystemExit(
+            f"env MT5 wajib belum lengkap di {env_path}: {', '.join(missing)}; "
+            "copy backend/.env.example ke backend/.env lalu isi"
+        )
 
     if mt5_module is None:
         try:
