@@ -38,7 +38,7 @@ def build_live_app(
     if missing:
         raise SystemExit(
             f"env MT5 wajib belum lengkap di {env_path}: {', '.join(missing)}; "
-            "copy backend/.env.example ke backend/.env lalu isi"
+            f"gunakan backend/.env.example sebagai format lalu isi {env_path}"
         )
 
     if mt5_module is None:

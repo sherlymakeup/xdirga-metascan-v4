@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import tempfile
 import time
 from pathlib import Path
 
@@ -13,6 +14,21 @@ from metascan.web.live_read import build_live_app
 
 TOKEN = "TEST-TOKEN-NOT-SECRET"
 BOT_MAGIC = 240101
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _no_journal_temp_delta():
+    temp_dir = Path(tempfile.gettempdir())
+    before = set(temp_dir.glob("metascan-journal-*"))
+    yield
+    after = set(temp_dir.glob("metascan-journal-*"))
+    leaked = after - before
+    assert not leaked, f"journal temp delta {len(leaked)}: {sorted(leaked)}"
+
+
+async def _run_lifespan(app) -> None:
+    async with app.router.lifespan_context(app):
+        pass
 
 
 def _write_config(
@@ -158,6 +174,7 @@ def test_env_file_credentials_bridge_without_process_env(
     app = build_live_app(config_path=config_path, mt5_module=FakeMt5())
 
     assert app is not None
+    asyncio.run(_run_lifespan(app))
     for name, value in values.items():
         assert os.environ[name] == value
         assert value not in caplog.text
@@ -181,7 +198,8 @@ def test_process_env_wins_over_env_file(
     for name, value in process_values.items():
         monkeypatch.setenv(name, value)
 
-    build_live_app(config_path=config_path, mt5_module=FakeMt5())
+    app = build_live_app(config_path=config_path, mt5_module=FakeMt5())
+    asyncio.run(_run_lifespan(app))
 
     for name, value in process_values.items():
         assert os.environ[name] == value
@@ -203,8 +221,8 @@ def test_missing_mt5_env_names_only(
     output = f"{exc.value} {caplog.text}"
     assert exc.value.code != 0
     assert "MT5_SERVER" in output
-    assert "copy backend/.env.example ke backend/.env lalu isi" in output
-    assert str(tmp_path / ".env") in output
+    assert "backend/.env.example" in output
+    assert f"isi {tmp_path / '.env'}" in output
     assert "LOGIN-SENTINEL" not in output
     assert "PASSWORD-SENTINEL" not in output
 
