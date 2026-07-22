@@ -31,6 +31,15 @@ async def _run_lifespan(app) -> None:
         pass
 
 
+async def _consumer_budgets(app) -> tuple[float, float]:
+    async with app.router.lifespan_context(app):
+        consumer = app.state.consumer
+        return (
+            consumer.dashboard_state().tick_age_budget_ms,
+            consumer._poll_cycle_p95_budget_ms,
+        )
+
+
 def _write_config(
     tmp_path: Path,
     *,
@@ -38,8 +47,16 @@ def _write_config(
     mt5_login: str = "",
     mt5_password: str = "",
     mt5_server: str = "",
+    safety: tuple[float, float] | None = None,
 ) -> Path:
     config_path = tmp_path / "config.toml"
+    safety_config = (
+        "\n[safety]\n"
+        f"tick_age_budget_ms = {safety[0]}\n"
+        f"poll_cycle_p95_budget_ms = {safety[1]}\n"
+        if safety is not None
+        else ""
+    )
     config_path.write_text(
         """[runtime]
 runtime_name = "XDirga Runtime V4"
@@ -54,7 +71,8 @@ bot_magic = 240101
 
 [runtime.symbols]
 watchlist = ["XAUUSD"]
-""",
+"""
+        + safety_config,
         encoding="utf-8",
     )
     (tmp_path / ".env").write_text(
@@ -203,6 +221,28 @@ def test_process_env_wins_over_env_file(
 
     for name, value in process_values.items():
         assert os.environ[name] == value
+
+
+def test_live_app_wires_configured_safety_budgets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config_path = _write_config(tmp_path, safety=(10000.0, 800.0))
+    _set_mt5_env(monkeypatch)
+
+    app = build_live_app(config_path=config_path, mt5_module=_seed())
+
+    assert asyncio.run(_consumer_budgets(app)) == (10000.0, 800.0)
+
+
+def test_live_app_without_safety_keeps_consumer_defaults(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    config_path = _write_config(tmp_path)
+    _set_mt5_env(monkeypatch)
+
+    app = build_live_app(config_path=config_path, mt5_module=_seed())
+
+    assert asyncio.run(_consumer_budgets(app)) == (1000.0, 400.0)
 
 
 def test_missing_mt5_env_names_only(

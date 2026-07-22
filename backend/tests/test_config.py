@@ -35,6 +35,43 @@ def test_loads_config_toml(tmp_path: Path) -> None:
     assert loaded.runtime.execution_semantics == "LIVE"
 
 
+def test_loads_safety_budgets(tmp_path: Path) -> None:
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        _MIN_RUNTIME
+        + "\n\n[safety]\n"
+        + "tick_age_budget_ms = 10000\n"
+        + "poll_cycle_p95_budget_ms = 800\n",
+        encoding="utf-8",
+    )
+
+    loaded = load_config(config_path=cfg, env_path=None)
+
+    assert loaded.safety is not None
+    assert loaded.safety.tick_age_budget_ms == 10000.0
+    assert loaded.safety.poll_cycle_p95_budget_ms == 800.0
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [("tick_age_budget_ms", 0), ("poll_cycle_p95_budget_ms", -1)],
+)
+def test_rejects_nonpositive_safety_budget(
+    tmp_path: Path, field: str, value: int
+) -> None:
+    cfg = tmp_path / "config.toml"
+    cfg.write_text(
+        _MIN_RUNTIME
+        + "\n\n[safety]\n"
+        + f"tick_age_budget_ms = {value if field == 'tick_age_budget_ms' else 1000}\n"
+        + f"poll_cycle_p95_budget_ms = {value if field == 'poll_cycle_p95_budget_ms' else 400}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ConfigError, match=field):
+        load_config(config_path=cfg, env_path=None)
+
+
 def test_env_loads_credentials_only(tmp_path: Path) -> None:
     cfg = tmp_path / "config.toml"
     cfg.write_text(

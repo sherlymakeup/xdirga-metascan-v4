@@ -54,12 +54,19 @@ def build_live_app(
         if cfg.runtime.symbols and cfg.runtime.symbols.watchlist
         else ("XAUUSD",)
     )
+    safety_kwargs = {}
+    if cfg.safety is not None:
+        safety_kwargs = {
+            "tick_age_budget_ms": cfg.safety.tick_age_budget_ms,
+            "poll_cycle_p95_budget_ms": cfg.safety.poll_cycle_p95_budget_ms,
+        }
     return create_wired_app(
         config=cfg,
         bot_magic=cfg.runtime.bot_magic,
         mt5_module=mt5_module,
         watchlist_bases=watchlist,
         symbol_suffix=cfg.runtime.symbol_suffix,
+        **safety_kwargs,
     )
 
 

@@ -44,6 +44,8 @@ def create_wired_app(
     watchlist_bases: tuple[str, ...] = ("XAUUSD",),
     symbol_suffix: str = "m",
     journal_path: str | None = None,
+    tick_age_budget_ms: float | None = None,
+    poll_cycle_p95_budget_ms: float | None = None,
 ) -> FastAPI:
     resolved_module = _resolve_mt5_module(mt5_module)
 
@@ -107,12 +109,20 @@ def create_wired_app(
                 gateway.stop()
                 gateway = None
             else:
+                budget_kwargs = {}
+                if tick_age_budget_ms is not None:
+                    budget_kwargs["tick_age_budget_ms"] = tick_age_budget_ms
+                if poll_cycle_p95_budget_ms is not None:
+                    budget_kwargs["poll_cycle_p95_budget_ms"] = (
+                        poll_cycle_p95_budget_ms
+                    )
                 consumer = BrokerStateConsumer(
                     bus=bus,
                     slot=slot,
                     metrics=metrics,
                     bot_magic=bot_magic,
                     runtime_id="xdirga",
+                    **budget_kwargs,
                 )
                 consumer.start()
                 a.state.consumer = consumer

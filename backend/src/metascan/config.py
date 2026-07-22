@@ -7,7 +7,7 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_serializer
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_serializer
 
 
 # Forbidden tokens as whole scalar values (not substrings of paths/names).
@@ -80,11 +80,19 @@ class RuntimeConfig(BaseModel):
     symbols: RuntimeSymbols | None = None
 
 
+class SafetyConfig(BaseModel):
+    model_config = ConfigDict(extra="allow")
+
+    tick_age_budget_ms: float = Field(gt=0)
+    poll_cycle_p95_budget_ms: float = Field(gt=0)
+
+
 class AppConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     runtime: RuntimeConfig
     credentials: Credentials = Field(default_factory=Credentials)
+    safety: SafetyConfig | None = None
 
 
 def _is_forbidden_scalar(value: Any) -> bool:
@@ -178,4 +186,7 @@ def load_config(
         )
 
     extras = {k: v for k, v in data.items() if k != "runtime"}
-    return AppConfig(runtime=runtime, credentials=credentials, **extras)
+    try:
+        return AppConfig(runtime=runtime, credentials=credentials, **extras)
+    except ValidationError as exc:
+        raise ConfigError(str(exc)) from exc
