@@ -2,6 +2,7 @@
 // qualified for persistence, with filters, ack, and clear actions.
 
 import { useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Bell, Check, CheckCheck, Trash2, X, AlertTriangle, Info, ShieldAlert } from "lucide-react";
 import {
   notificationCenter,
@@ -66,8 +67,8 @@ export function NotificationCenterButton() {
   );
 }
 
-function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
-  const [filter, setFilter] = useState<Filter>("unread");
+export function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
+  const [filter, setFilter] = useState<Filter>("all");
   const all = useNotifications();
   const counts = useNotificationCounts();
 
@@ -86,8 +87,8 @@ function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
     }
   }, [all, filter]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex" role="dialog" aria-label="Notification center">
+  const drawer = (
+    <div className="fixed inset-0 z-[70] flex" role="dialog" aria-label="Notification center">
       <div className="flex-1 bg-black/60 backdrop-blur-[2px]" onClick={onClose} />
       <aside className="flex h-full w-full max-w-md flex-col border-l border-panel-border bg-background shadow-2xl">
         {/* Header */}
@@ -226,4 +227,5 @@ function NotificationCenterDrawer({ onClose }: { onClose: () => void }) {
       </aside>
     </div>
   );
+  return typeof document === "undefined" ? drawer : createPortal(drawer, document.body);
 }

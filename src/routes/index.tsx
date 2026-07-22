@@ -27,6 +27,7 @@ import { EmptyState } from "@/components/cockpit/states";
 import { RiskMeter } from "@/components/cockpit/risk-meter";
 import type { Alert, Position, SubsystemHealth } from "@/lib/types";
 import type { RuntimeCommand, RuntimeCommand as Cmd } from "@/lib/adapters/runtime";
+import { useActiveEventAlerts } from "@/lib/runtime/events/notification-center";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -57,9 +58,14 @@ export function CockpitPage() {
   const snap = useSnapshot();
   const connection = useConnectionState();
   const isDemo = getRuntimeMode() === "fixture";
+  const eventAlerts = useActiveEventAlerts();
+  const alerts = useMemo(
+    () => [...snap.alerts, ...eventAlerts.filter((event) => !snap.alerts.some((a) => a.id === event.id))],
+    [eventAlerts, snap.alerts],
+  );
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
 
-  const critical = snap.alerts.filter((a) => !a.acknowledged && a.severity === "CRITICAL").length;
+  const critical = alerts.filter((a) => !a.acknowledged && a.severity === "CRITICAL").length;
   const openExec = snap.orders.filter((o) => o.status === "EXECUTION_UNKNOWN").length;
 
   const runtime = snap.runtime;
@@ -410,7 +416,7 @@ export function CockpitPage() {
             )}
 
             <ActiveStrategyPanel snap={snap} />
-            <AlertsPanel alerts={snap.alerts} />
+            <AlertsPanel alerts={alerts} />
             <ActivityTimeline events={snap.events.slice(0, 8)} />
           </div>
         </div>

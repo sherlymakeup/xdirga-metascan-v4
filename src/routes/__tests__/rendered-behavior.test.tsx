@@ -11,6 +11,7 @@ const mockConnectionRef: { current: RuntimeConnectionStateSnapshot } = {
 };
 const mockModeRef: { current: "fixture" | "http" } = { current: "http" };
 const mockHasValidatedSnapshotRef: { current: boolean } = { current: false };
+const mockNotificationsRef: { current: unknown[] } = { current: [] };
 
 vi.mock("@/lib/runtime", () => ({
   getRuntimeMode: () => mockModeRef.current,
@@ -34,7 +35,11 @@ vi.mock("@/lib/runtime", () => ({
 vi.mock("@/lib/adapters/runtime", () => ({
   getRuntimeAdapter: () => ({
     sendCommand: vi.fn(),
+    setScenario: vi.fn(),
   }),
+  getRuntimeMode: () => mockModeRef.current,
+  hydrateScenarioFromStorage: vi.fn(),
+  useScenario: () => "healthy",
   useSnapshot: () => mockSnapshotRef.current,
 }));
 
@@ -42,6 +47,20 @@ vi.mock("@/lib/runtime/events", () => ({
   useEventHistory: () => [],
   useEventHistoryPaused: () => false,
   eventHistoryStore: { subscribe: () => () => {}, list: () => [] },
+}));
+
+vi.mock("@/lib/runtime/events/notification-center", () => ({
+  useActiveEventAlerts: () =>
+    mockNotificationsRef.current.map((entry: any) => ({
+      id: entry.latest.payload.id,
+      severity: entry.latest.severity,
+      title: entry.latest.payload.title,
+      source: entry.latest.source,
+      createdAt: entry.latest.occurredAt,
+      description: entry.latest.type,
+      suggestedAction: "Review alert details.",
+      acknowledged: entry.acknowledged,
+    })),
 }));
 
 import { PositionsPage } from "../positions";
@@ -383,6 +402,45 @@ describe("rendered-behavior: dashboard loading skeleton", () => {
     expect(html).not.toContain("123,456");
     expect(html).not.toContain("987");
     expect(html).not.toContain("73%");
+  });
+
+  it("renders an unresolved active alert received from the event notification store", () => {
+    setSnapshot({ alerts: [] });
+    setConnection({ state: "CONNECTED" });
+    mockHasValidatedSnapshotRef.current = true;
+    mockNotificationsRef.current = [
+      {
+        id: "alert.created|CRITICAL|-",
+        acknowledged: false,
+        firstSeenAt: "2026-07-23T00:00:00Z",
+        lastSeenAt: "2026-07-23T00:00:00Z",
+        count: 1,
+        latest: {
+          eventId: "event-alert-1",
+          type: "alert.created",
+          runtimeId: "runtime-1",
+          bootId: "boot-1",
+          revision: 1,
+          sequence: 1,
+          occurredAt: "2026-07-23T00:00:00Z",
+          emittedAt: "2026-07-23T00:00:00Z",
+          receivedAt: "2026-07-23T00:00:00Z",
+          severity: "CRITICAL",
+          source: "LOCAL_RUNTIME",
+          payload: {
+            id: "alien-4417215094",
+            title: "Alien position detected",
+            acknowledged: false,
+          },
+        },
+        decision: { createAlert: true, priority: "CRITICAL" },
+      },
+    ];
+
+    const html = renderToStaticMarkup(<CockpitPage />);
+
+    expect(html).toContain("1 unresolved");
+    expect(html).toContain("Alien position detected");
   });
 
   it("renders retained data (not skeleton) when validated snapshot exists and connection degrades", () => {

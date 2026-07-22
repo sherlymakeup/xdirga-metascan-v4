@@ -2,6 +2,7 @@
 // occurrence counter with dedupe.
 
 import { useSyncExternalStore } from "react";
+import type { Alert } from "@/lib/types";
 import type { RuntimeEventEnvelope } from "./event-types";
 import type { EventNotificationDecision } from "./notification-policy";
 
@@ -155,6 +156,37 @@ export function useNotifications(): NotificationEntry[] {
     () => notificationCenter.list(),
     () => EMPTY_LIST,
   );
+}
+
+export function useActiveEventAlerts(): Alert[] {
+  return useNotifications()
+    .filter((entry) => entry.decision.createAlert && !entry.acknowledged)
+    .map((entry) => {
+      const payload = entry.latest.payload as Record<string, unknown>;
+      return {
+        id: typeof payload.id === "string" ? payload.id : entry.id,
+        severity:
+          entry.latest.severity === "CRITICAL"
+            ? "CRITICAL"
+            : entry.latest.severity === "ERROR"
+              ? "HIGH"
+              : entry.latest.severity === "WARNING"
+                ? "MEDIUM"
+                : "INFO",
+        title: typeof payload.title === "string" ? payload.title : entry.latest.type,
+        source: entry.latest.source,
+        createdAt: entry.latest.occurredAt,
+        description:
+          typeof payload.description === "string"
+            ? payload.description
+            : typeof payload.reason === "string"
+              ? payload.reason
+              : entry.latest.type,
+        suggestedAction:
+          typeof payload.suggestedAction === "string" ? payload.suggestedAction : "Review alert details.",
+        acknowledged: false,
+      };
+    });
 }
 
 export function useNotificationCounts() {

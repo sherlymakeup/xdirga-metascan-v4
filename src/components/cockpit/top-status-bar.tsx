@@ -7,6 +7,7 @@ import {
   useSnapshot,
   getRuntimeAdapter,
 } from "@/lib/adapters/runtime";
+import { getRuntimeMode } from "@/lib/runtime";
 import { SCENARIOS } from "@/lib/demo/scenarios";
 import { fmtDuration, fmtTime, relativeTime } from "@/lib/format";
 import { PRODUCT_BRAND } from "@/lib/constants/brand";
@@ -122,7 +123,9 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
         <div className="ml-auto md:ml-2 flex items-center gap-1.5">
           <CommandCenterButton />
           <NotificationCenterButton />
-          {DEVELOPMENT_FEATURES_ENABLED && <ScenarioSwitcher scenario={scenario} />}
+          {DEVELOPMENT_FEATURES_ENABLED && getRuntimeMode() === "fixture" && (
+            <ScenarioSwitcher scenario={scenario} />
+          )}
         </div>
       </div>
 
