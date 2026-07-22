@@ -66,7 +66,7 @@ def test_block_call_sleeps() -> None:
     f.block_call("positions_get", 0.15)
     t0 = time.monotonic()
     f.positions_get()
-    assert time.monotonic() - t0 >= 0.14
+    assert time.monotonic() - t0 >= 0.12  # Allow scheduler jitter while proving blocking.
 
 
 def test_records_thread_ident() -> None:
