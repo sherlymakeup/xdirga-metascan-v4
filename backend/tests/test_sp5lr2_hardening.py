@@ -262,6 +262,10 @@ async def test_shutdown_no_thread_or_task_leak():
         await _wait_connected(client, fake)
         r = await client.get("/v4/snapshot", headers=AUTH)
         assert r.status_code == 200
+        journal_path = app.state.journal.path
+        sidecars = [Path(f"{journal_path}{suffix}") for suffix in ("-shm", "-wal")]
+        for sidecar in sidecars:
+            sidecar.touch(exist_ok=True)
 
     await asyncio.sleep(0.3)
     after_threads = {t.name for t in threading.enumerate()}
@@ -271,3 +275,16 @@ async def test_shutdown_no_thread_or_task_leak():
     for t in asyncio.all_tasks():
         assert t.get_name() != "broker-state-consumer"
     assert "shutdown" in fake.call_log
+    assert not journal_path.exists()
+    assert not any(sidecar.exists() for sidecar in sidecars)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_preserves_injected_journal(tmp_path: Path):
+    journal_path = tmp_path / "caller-owned.sqlite"
+    app = create_wired_app(journal_path=str(journal_path))
+
+    async with app.router.lifespan_context(app):
+        assert journal_path.exists()
+
+    assert journal_path.exists()

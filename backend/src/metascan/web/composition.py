@@ -51,8 +51,12 @@ def create_wired_app(
         env_magic = os.environ.get("BOT_MAGIC", "").strip()
         bot_magic = int(env_magic) if env_magic else 0
 
+    owns_journal_path = journal_path is None
     if journal_path is None:
-        journal_path = tempfile.mkstemp(prefix="metascan-journal-", suffix=".sqlite")[1]
+        journal_fd, journal_path = tempfile.mkstemp(
+            prefix="metascan-journal-", suffix=".sqlite"
+        )
+        os.close(journal_fd)
     journal = Journal(journal_path)
     journal.open()
 
@@ -121,6 +125,16 @@ def create_wired_app(
             gateway.stop()
         await bus.close()
         journal.close()
+        if owns_journal_path:
+            for path in (
+                journal.path,
+                journal.path.with_name(f"{journal.path.name}-shm"),
+                journal.path.with_name(f"{journal.path.name}-wal"),
+            ):
+                try:
+                    path.unlink()
+                except FileNotFoundError:
+                    pass
 
     app.router.lifespan_context = lifespan
 
