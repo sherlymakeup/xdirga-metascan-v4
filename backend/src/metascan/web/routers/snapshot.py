@@ -20,6 +20,8 @@ router = APIRouter()
 
 _RUNTIME_ID = "xdirga"
 ACCOUNT_FRESHNESS_MAX_AGE_MS = 2000.0
+# 250 ms permits ordinary clock jitter/NTP drift while surfacing material future skew.
+CLOCK_SKEW_TOLERANCE_MS = 250.0
 
 
 def _empty_snapshot() -> dict:
@@ -138,7 +140,7 @@ def _observation_age_ms(observed_at: str | None, *, now_utc: datetime.datetime) 
     if observed_at is None:
         return float("inf")
     observed = datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
-    return max(0.0, (now_utc - observed).total_seconds() * 1000)
+    return (now_utc - observed).total_seconds() * 1000
 
 
 def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> dict:
@@ -213,8 +215,8 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
             "changePct": None,
             "sessionOpen": None,
             "tradingPermitted": False,
-            "tickAgeMs": max(0.0, now_msc - tick.time_msc),
-            "freshness": "FRESH" if connected and max(0.0, now_msc - tick.time_msc) <= state.tick_age_budget_ms else "STALE",
+            "tickAgeMs": now_msc - tick.time_msc,
+            "freshness": "FRESH" if connected and -CLOCK_SKEW_TOLERANCE_MS <= now_msc - tick.time_msc <= state.tick_age_budget_ms else "STALE",
             "contractSize": state.symbol_meta[tick.symbol].trade_contract_size,
             "tickSize": state.symbol_meta[tick.symbol].tick_size,
             "minVolume": state.symbol_meta[tick.symbol].volume_min,
@@ -232,7 +234,9 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
         account_fresh = (
             state.account_available
             and connected
-            and _observation_age_ms(state.account_observed_at, now_utc=now_utc) <= ACCOUNT_FRESHNESS_MAX_AGE_MS
+            and -CLOCK_SKEW_TOLERANCE_MS
+            <= _observation_age_ms(state.account_observed_at, now_utc=now_utc)
+            <= ACCOUNT_FRESHNESS_MAX_AGE_MS
         )
         snapshot["runtime"]["tradingMode"] = account_mode
         snapshot["broker"]["accountMode"] = account_mode

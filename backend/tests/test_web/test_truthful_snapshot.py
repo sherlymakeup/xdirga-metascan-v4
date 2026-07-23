@@ -4,7 +4,7 @@ import datetime
 import pytest
 
 from metascan.mt5.mapping import position_payload
-from metascan.mt5.types import AccountRow, DashboardReadState, PositionRow
+from metascan.mt5.types import AccountRow, DashboardReadState, PositionRow, SymbolMeta, TickRow
 from metascan.web.routers.snapshot import _empty_snapshot, _read_snapshot
 
 
@@ -90,6 +90,52 @@ def test_account_freshness_is_stale_when_observation_exceeds_budget():
     state = _account_state(connection_state="CONNECTED", observed_at="2026-07-22T12:00:00Z")
 
     assert _read_snapshot(state, now_utc=now)["account"]["freshness"] == "STALE"
+
+
+def test_account_freshness_is_stale_when_future_observation_exceeds_clock_skew_tolerance():
+    now = datetime.datetime(2026, 7, 22, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    state = _account_state(connection_state="CONNECTED", observed_at="2026-07-22T12:00:00.251Z")
+
+    assert _read_snapshot(state, now_utc=now)["account"]["freshness"] == "STALE"
+
+
+def _market_snapshot(*, tick_offset_ms: int) -> dict:
+    now = datetime.datetime(2026, 7, 22, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    now_msc = int(now.timestamp() * 1000)
+    symbol = "EURUSD"
+    state = DashboardReadState(
+        connection_state="CONNECTED",
+        account=None,
+        positions=(),
+        ticks={symbol: TickRow(symbol, 1.1, 1.2, 1.15, now_msc + tick_offset_ms, 1.0)},
+        symbol_meta={
+            symbol: SymbolMeta(symbol, symbol, 5, 0.00001, 100000.0, 0.00001, 1.0, 0.01, 100.0, 0.01, 0, 0, 1, 4, True)
+        },
+        bot_magic=999,
+        tick_age_budget_ms=1000.0,
+        last_frame_id=1,
+        last_frame_at="2026-07-22T12:00:00Z",
+        poll_latency_ms=10.0,
+    )
+    return _read_snapshot(state, now_utc=now)["markets"][0]
+
+
+def test_small_future_tick_skew_remains_fresh_with_negative_age_evidence():
+    market = _market_snapshot(tick_offset_ms=100)
+    assert market["tickAgeMs"] == -100
+    assert market["freshness"] == "FRESH"
+
+
+def test_future_tick_beyond_clock_skew_tolerance_is_stale_with_negative_age_evidence():
+    market = _market_snapshot(tick_offset_ms=251)
+    assert market["tickAgeMs"] == -251
+    assert market["freshness"] == "STALE"
+
+
+def test_positive_tick_age_keeps_normal_freshness_behavior():
+    market = _market_snapshot(tick_offset_ms=-500)
+    assert market["tickAgeMs"] == 500
+    assert market["freshness"] == "FRESH"
 
 
 def test_empty_snapshot_runtime_host_fields_are_null():

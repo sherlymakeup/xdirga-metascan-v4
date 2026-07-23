@@ -124,6 +124,10 @@ function showToast(env: RuntimeEventEnvelope, priority: string) {
   }
 }
 
+export function resetEventRouterToSnapshot(runtimeId: string, bootId: string, sequence: number) {
+  dedup.resetToSnapshot(runtimeId, bootId, sequence);
+}
+
 export function resetEventRouter() {
   dedup.reset();
   toastCooldowns.clear();

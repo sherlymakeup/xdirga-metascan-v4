@@ -13,5 +13,5 @@ export {
   DevelopmentFixtureEventSource,
   scheduleFixtureManagementLifecycle,
 } from "./fixture-event-source";
-export { routeEvent, resetEventRouter } from "./event-router";
+export { routeEvent, resetEventRouter, resetEventRouterToSnapshot } from "./event-router";
 export { bootstrapEventPipeline, teardownEventPipeline } from "./bootstrap";

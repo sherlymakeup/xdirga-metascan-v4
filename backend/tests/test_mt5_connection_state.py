@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import datetime
 from pathlib import Path
 from types import MappingProxyType
 
@@ -13,8 +14,9 @@ from metascan.mt5.consumer import BrokerStateConsumer
 from metascan.mt5.gateway import GatewayConfig, Mt5Gateway
 from metascan.mt5.handoff import LatestFrameSlot
 from metascan.mt5.metrics import GatewayMetrics
-from metascan.mt5.types import BrokerStateFrame
+from metascan.mt5.types import AccountRow, BrokerStateFrame, SymbolMeta, TickRow
 from metascan.mt5.testing.fake_mt5 import FakeMt5
+from metascan.web.routers.snapshot import _read_snapshot
 
 BOT = 240101
 
@@ -178,6 +180,52 @@ async def test_poll_failures_and_recovery_transitions(tmp_path: Path) -> None:
 
     await consumer.stop()
     gw.stop()
+    await bus.close()
+
+
+async def test_heartbeat_timeout_retains_values_but_marks_account_and_markets_stale(tmp_path: Path) -> None:
+    j = Journal(tmp_path / "j.sqlite")
+    bus = EventBus(j)
+    await bus.start()
+    metrics = GatewayMetrics()
+    consumer = BrokerStateConsumer(
+        bus=bus,
+        slot=LatestFrameSlot(metrics),
+        metrics=metrics,
+        bot_magic=BOT,
+        runtime_id="rt1",
+        heartbeat_timeout_ms=100.0,
+    )
+    now = datetime.datetime.now(datetime.timezone.utc)
+    now_msc = int(now.timestamp() * 1000)
+    frame = BrokerStateFrame(
+        frame_id=1,
+        cycle_started_m=0,
+        cycle_finished_m=0.01,
+        cycle_duration_ms=10,
+        polled_at_wall=now.isoformat().replace("+00:00", "Z"),
+        positions=(),
+        account=AccountRow(1, 10000.0, 10050.0, 100.0, 9900.0, 10050.0, "USD", 0, 2),
+        ticks=MappingProxyType({"XAUUSDm": TickRow("XAUUSDm", 2300.0, 2300.5, 2300.2, now_msc, 1.0)}),
+        symbol_meta=MappingProxyType({
+            "XAUUSDm": SymbolMeta("XAUUSD", "XAUUSDm", 2, 0.01, 100.0, 0.01, 1.0, 0.01, 100.0, 0.01, 0, 0, 1, 4, True)
+        }),
+        errors=(),
+        mt5_last_error=(0, "OK"),
+    )
+    await consumer.process_frame(frame)
+    consumer.start()
+
+    await asyncio.sleep(0.25)
+    snapshot = _read_snapshot(consumer.dashboard_state(), now_utc=datetime.datetime.now(datetime.timezone.utc))
+
+    assert snapshot["broker"]["connection"] == "DISCONNECTED"
+    assert snapshot["account"]["balance"] is not None
+    assert snapshot["account"]["freshness"] == "STALE"
+    assert snapshot["markets"][0]["bid"] == 2300.0
+    assert snapshot["markets"][0]["freshness"] == "STALE"
+
+    await consumer.stop()
     await bus.close()
 
 

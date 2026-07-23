@@ -8,6 +8,7 @@ import { buildCapabilities } from "./runtime-capabilities";
 import { createEmptySnapshot } from "@/lib/demo/scenarios";
 import { evaluateHandshake } from "./runtime-handshake";
 import { EventDeduplicator } from "./events/event-deduplicator";
+import { resetEventRouterToSnapshot } from "./events/event-router";
 import { validateEnvelope, validateHandshake, validateSnapshot } from "./events/event-schemas";
 import { validateTransition } from "./commands/command-transitions";
 import { RUNTIME_EVENT_TYPES } from "./events/runtime-event-envelope";
@@ -185,6 +186,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     this.envelope = env;
     this.lastSequence = env.metadata.sequence;
     this.dedup.resetToSnapshot(env.metadata.runtimeId, env.metadata.bootId, env.metadata.sequence);
+    resetEventRouterToSnapshot(env.metadata.runtimeId, env.metadata.bootId, env.metadata.sequence);
     this.hasValidatedSnapshot = true;
     for (const l of this.snapshotListeners) l(env);
   }

@@ -18,9 +18,13 @@ interface RuntimeCursor {
   lastSequence: number;
   seenIds: Set<string>;
   seenIdsOrder: string[];
+  supersededBootIds: Set<string>;
+  supersededBootIdsOrder: string[];
 }
 
 const MAX_SEEN_IDS = 2000;
+// 32 covers normal restart history while keeping per-runtime memory strictly bounded.
+const MAX_SUPERSEDED_BOOTS = 32;
 
 export class EventDeduplicator {
   private cursors = new Map<string, RuntimeCursor>();
@@ -36,6 +40,8 @@ export class EventDeduplicator {
         lastSequence: env.sequence,
         seenIds: new Set([env.eventId]),
         seenIdsOrder: [env.eventId],
+        supersededBootIds: new Set(),
+        supersededBootIdsOrder: [],
       };
       this.cursors.set(key, cursor);
       return { action: "accept" };
@@ -43,12 +49,11 @@ export class EventDeduplicator {
 
     // Boot ID changed — treat as safe reset (do not silently reorder).
     if (env.bootId !== cursor.bootId) {
-      // Compare boot ordering by lexical string only when both look ISO-ish; otherwise
-      // trust the new boot ID as authoritative (runtime restarted).
-      const previous = cursor.bootId;
-      if (env.bootId < previous) {
+      if (cursor.supersededBootIds.has(env.bootId)) {
         return { action: "drop", reason: "obsolete-boot" };
       }
+      const previous = cursor.bootId;
+      this.trackSupersededBoot(cursor, previous);
       cursor.bootId = env.bootId;
       cursor.lastSequence = env.sequence;
       cursor.seenIds = new Set([env.eventId]);
@@ -92,13 +97,31 @@ export class EventDeduplicator {
   }
 
   resetToSnapshot(runtimeId: string, bootId: string, sequence: number): void {
+    const previous = this.cursors.get(runtimeId);
+    const supersededBootIds = previous?.supersededBootIds ?? new Set<string>();
+    const supersededBootIdsOrder = previous?.supersededBootIdsOrder ?? [];
+    if (previous && previous.bootId !== bootId) {
+      this.trackSupersededBoot(previous, previous.bootId);
+    }
     this.cursors.set(runtimeId, {
       runtimeId,
       bootId,
       lastSequence: sequence,
       seenIds: new Set(),
       seenIdsOrder: [],
+      supersededBootIds,
+      supersededBootIdsOrder,
     });
+  }
+
+  private trackSupersededBoot(cursor: RuntimeCursor, bootId: string) {
+    if (cursor.supersededBootIds.has(bootId)) return;
+    cursor.supersededBootIds.add(bootId);
+    cursor.supersededBootIdsOrder.push(bootId);
+    if (cursor.supersededBootIdsOrder.length > MAX_SUPERSEDED_BOOTS) {
+      const oldest = cursor.supersededBootIdsOrder.shift();
+      if (oldest) cursor.supersededBootIds.delete(oldest);
+    }
   }
 
   private trackId(cursor: RuntimeCursor, id: string) {
