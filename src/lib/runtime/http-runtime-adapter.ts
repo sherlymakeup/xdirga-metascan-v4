@@ -563,7 +563,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       }
       this.setHandshake(hs);
       const rawCapabilities = await this.restGet("/capabilities");
-      if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
+      if (generation !== this.connectGeneration) return;
       const caps = this.acceptCapabilities(rawCapabilities);
       this.applyCapabilities(caps);
       const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
@@ -611,8 +611,9 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
         });
         throw new Error(compat.reasons[0]?.message ?? "Handshake incompatible.");
       }
-      const caps = this.acceptCapabilities(await this.restGet("/capabilities"));
-      if (generation !== this.connectGeneration) return;
+      const rawCapabilities = await this.restGet("/capabilities");
+      if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
+      const caps = this.acceptCapabilities(rawCapabilities);
       this.applyCapabilities(caps);
       const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (generation !== this.connectGeneration) return;

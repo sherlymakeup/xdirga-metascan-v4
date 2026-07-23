@@ -573,6 +573,33 @@ describe("HttpRuntimeAdapter", () => {
     expect(h.timers.length).toBeGreaterThan(0);
   });
 
+  it("ignores stale invalid capabilities after disconnect", async () => {
+    let calls = 0;
+    let resolveStale!: (value: unknown) => void;
+    const stale = new Promise<unknown>((resolve) => {
+      resolveStale = resolve;
+    });
+    const h = createHarness({
+      capabilities: () => {
+        calls += 1;
+        return calls === 2 ? stale : capabilitiesBody();
+      },
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    const enabled = adapter.getCapabilities();
+
+    const staleConnect = adapter.connect();
+    await flush();
+    await adapter.disconnect();
+    resolveStale({ ...capabilitiesBody(), commands: { "runtime.pause": null } });
+
+    await expect(staleConnect).resolves.toBeUndefined();
+    expect(adapter.getCapabilities()).toEqual(enabled);
+    expect(adapter.getConnectionState().state).toBe("DISCONNECTED");
+    expect(h.timers).toHaveLength(0);
+  });
+
   it("ignores stale invalid capabilities from an earlier reconnect generation", async () => {
     let calls = 0;
     let resolveStale!: (value: unknown) => void;
