@@ -117,12 +117,17 @@ def create_wired_app(
                     budget_kwargs["poll_cycle_p95_budget_ms"] = (
                         poll_cycle_p95_budget_ms
                     )
+                async def deal_lookup(ticket: int) -> tuple[object, ...]:
+                    assert gateway is not None
+                    return await asyncio.wrap_future(gateway.history_deals_get(position=ticket))
+
                 consumer = BrokerStateConsumer(
                     bus=bus,
                     slot=slot,
                     metrics=metrics,
                     bot_magic=bot_magic,
                     runtime_id="xdirga",
+                    deal_lookup=deal_lookup,
                     **budget_kwargs,
                 )
                 consumer.start()

@@ -58,6 +58,7 @@ async def _boot_with_pos(tmp_path, pending=None):
         "profit": 20.0, "swap": -0.5, "commission": -1.0, "type": 0,
         "time_msc": 0, "identifier": 55, "comment": "",
     }])
+    fake.set_history_deals([{"position_id": 55, "entry": 1, "volume": 0.2, "price": 2305.0, "time_msc": 1_720_000_000_000, "profit": 20.0, "commission": -1.0, "swap": -0.5, "fee": 0.0}])
     j = Journal(tmp_path / "j.sqlite")
     bus = EventBus(j)
     await bus.start()
@@ -72,9 +73,12 @@ async def _boot_with_pos(tmp_path, pending=None):
         ),
         slot=slot, loop=loop, metrics=metrics,
     )
+    async def deal_lookup(ticket: int):
+        return await asyncio.wrap_future(gw.history_deals_get(position=ticket))
+
     consumer = BrokerStateConsumer(
         bus=bus, slot=slot, metrics=metrics, bot_magic=BOT,
-        runtime_id="rt1", pending=pending or NullPendingIntentLookup(),
+        runtime_id="rt1", pending=pending or NullPendingIntentLookup(), deal_lookup=deal_lookup,
     )
     gw.start()
     gw.wait_boot(3.0)
@@ -174,5 +178,7 @@ async def test_same_sequence_different_pending_different_exit_reasons(tmp_path: 
 
     ext = await run(NullPendingIntentLookup())
     bot = await run(ClosePending({1}))
-    assert "trade.closed" in ext
-    assert "trade.closed" in bot
+    assert "trade.closed" not in ext
+    assert "trade.closed" not in bot
+    assert "reconciliation.issue.detected" in ext
+    assert "reconciliation.issue.detected" in bot

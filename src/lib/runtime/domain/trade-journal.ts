@@ -38,6 +38,8 @@ interface JournalSnapshot {
   lastUpdatedAt: string | null;
   nextCursor: string | null;
   loading: boolean;
+  historyError: "History unavailable" | "History incomplete" | null;
+  historyIncomplete: boolean;
 }
 
 class TradeJournalStore {
@@ -47,6 +49,8 @@ class TradeJournalStore {
   private lastUpdatedAt: string | null = null;
   private nextCursor: string | null = null;
   private loading = false;
+  private historyError: JournalSnapshot["historyError"] = null;
+  private historyIncomplete = false;
   private snapshotCache: JournalSnapshot = {
     trades: [],
     bySource: { events: 0, history: 0 },
@@ -54,6 +58,8 @@ class TradeJournalStore {
     lastUpdatedAt: null,
     nextCursor: null,
     loading: false,
+    historyError: null,
+    historyIncomplete: false,
   };
 
   subscribe = (l: Listener): (() => void) => {
@@ -77,6 +83,8 @@ class TradeJournalStore {
       lastUpdatedAt: this.lastUpdatedAt,
       nextCursor: this.nextCursor,
       loading: this.loading,
+      historyError: this.historyError,
+      historyIncomplete: this.historyIncomplete,
     };
   }
 
@@ -110,6 +118,10 @@ class TradeJournalStore {
     if (changed) {
       this.trim();
       this.lastUpdatedAt = new Date().toISOString();
+    }
+    if (changed || this.historyError !== null || this.historyIncomplete) {
+      this.historyError = null;
+      this.historyIncomplete = false;
       this.emit();
     }
   }
@@ -140,6 +152,20 @@ class TradeJournalStore {
     this.emit();
   }
 
+  setHistoryError(error: NonNullable<JournalSnapshot["historyError"]>) {
+    if (this.historyError === error && this.historyIncomplete) return;
+    this.historyError = error;
+    this.historyIncomplete = true;
+    this.emit();
+  }
+
+  clearHistoryError() {
+    if (this.historyError === null && !this.historyIncomplete) return;
+    this.historyError = null;
+    this.historyIncomplete = false;
+    this.emit();
+  }
+
   getNextCursor(): string | null {
     return this.nextCursor;
   }
@@ -150,6 +176,8 @@ class TradeJournalStore {
     this.lastUpdatedAt = null;
     this.nextCursor = null;
     this.loading = false;
+    this.historyError = null;
+    this.historyIncomplete = false;
     this.emit();
   }
 }

@@ -357,6 +357,9 @@ class Mt5Gateway:
     def success_retcodes(self) -> frozenset[int]:
         return frozenset({self._constant("TRADE_RETCODE_DONE", 10009), self._constant("TRADE_RETCODE_DONE_PARTIAL", 10010)})
 
+    def history_deals_get(self, *, position: int) -> concurrent.futures.Future:
+        return self.submit_command(lambda: tuple(self._mt5.history_deals_get(position=position) or ()))
+
     def sweep_facts(self) -> concurrent.futures.Future:
         return self.submit_command(self._sweep_facts_on_gateway_thread)
 

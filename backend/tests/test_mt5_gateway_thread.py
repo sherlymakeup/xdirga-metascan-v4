@@ -40,3 +40,21 @@ async def test_all_mt5_calls_same_thread() -> None:
     assert "initialize" in names
     assert "positions_get" in names
     assert "account_info" in names
+
+
+async def test_history_deals_get_filters_position_on_gateway_thread() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=1))
+    fake.add_symbol("XAUUSDm", **default_symbol_info("XAUUSDm"))
+    fake.set_tick("XAUUSDm", 1.0, 1.1, 1000)
+    fake.set_history_deals([{"position_id": 7, "ticket": 70}, {"position_id": 8, "ticket": 80}])
+    metrics = GatewayMetrics()
+    gw = Mt5Gateway(fake, config=GatewayConfig(login=1, password="p", server="s", symbol_suffix="m", watchlist_bases=("XAUUSD",), bot_magic=1, poll_interval_ms=40), slot=LatestFrameSlot(metrics), loop=asyncio.get_running_loop(), metrics=metrics)
+    gw.start()
+    gw.wait_boot(3.0)
+    deals = await asyncio.wrap_future(gw.history_deals_get(position=7))
+    gateway_thread_id = gw.thread_id
+    gw.stop()
+
+    assert [deal.position_id for deal in deals] == [7]
+    assert [(name, thread_id) for name, thread_id in fake.call_threads if name == "history_deals_get"] == [("history_deals_get", gateway_thread_id)]

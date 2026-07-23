@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from helpers import make_position_row
 from metascan.mt5.mapping import (
     closed_trade_payload,
@@ -27,12 +29,12 @@ def test_protection_levels() -> None:
 
 def test_closed_trade_exit_reason_manual_and_net_pnl() -> None:
     row = make_position_row(ticket=7, profit=10.0, commission=-1.0, swap=-0.5)
-    p = closed_trade_payload(row, closed_at="2026-07-13T00:00:00Z")
+    p = closed_trade_payload(row, closed_at="2026-07-13T00:00:00Z", deals=(SimpleNamespace(entry=1, volume=0.1, price=2301.0, time_msc=1_720_000_000_000, profit=10.0, commission=-1.0, swap=-0.5, fee=0.0),))
     assert p["exitReason"] == "MANUAL"
     assert "MANUAL_CLOSE" not in p.values()
     assert p["netPnl"] == p["grossPnl"] + p["commission"] + p["swap"]
     assert p["positionId"] == "7"
-    assert "sp3-no-history" in p["tags"]
+    assert p["tags"] == ["deal-reconciled"]
 
 
 def test_position_payload_id() -> None:

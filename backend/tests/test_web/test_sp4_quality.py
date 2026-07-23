@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import threading
+import httpx
 import pytest
 
 from metascan.contract.models import RuntimeEventEnvelope
@@ -44,7 +45,29 @@ def _make_trade_env(bus, seq: int, trade_id: str) -> RuntimeEventEnvelope:
         received_at="2026-07-13T00:00:00Z",
         severity="INFO",
         source="LOCAL_RUNTIME",
-        payload={"tradeId": trade_id, "netPnl": 1.5},
+        payload={
+            "tradeId": trade_id,
+            "positionId": "position-1",
+            "strategyId": "strategy-1",
+            "symbol": "EURUSD",
+            "direction": "LONG",
+            "entryPrice": 1.1,
+            "exitPrice": 1.2,
+            "openedAt": "2026-07-13T00:00:00Z",
+            "closedAt": "2026-07-13T01:00:00Z",
+            "holdingSeconds": 3600,
+            "volumeInitial": 0.1,
+            "grossPnl": 1.5,
+            "commission": 0.0,
+            "swap": 0.0,
+            "netPnl": 1.5,
+            "rMultiple": None,
+            "mfeR": None,
+            "maeR": None,
+            "exitReason": "MANUAL",
+            "partialFills": [],
+            "tags": [],
+        },
     )
 
 
@@ -284,6 +307,36 @@ async def test_history_trades_no_non_trade_events(async_client, event_bus, journ
     # Only trade.closed events returned
     assert len(d["trades"]) == 1
     assert d["trades"][0]["tradeId"] == "trade-only"
+
+
+@pytest.mark.asyncio
+async def test_history_trades_rejects_page_containing_invalid_trade_payload(
+    async_client, event_bus, journal_db, caplog
+):
+    envelope = _make_trade_env(event_bus, 999, "trade-invalid")
+    data = envelope.model_dump(mode="json", by_alias=True)
+    data["payload"] = {"tradeId": "trade-invalid"}
+
+    def _insert(conn):
+        conn.execute(
+            "INSERT INTO events (boot_id, sequence, type, entity_id, ts, envelope_json) VALUES (?, ?, ?, ?, ?, ?)",
+            (event_bus.boot_id, 999, "trade.closed", None, envelope.occurred_at, json.dumps(data)),
+        )
+        conn.commit()
+
+    journal_db.run_on_writer(_insert)
+
+    async with httpx.AsyncClient(
+        transport=httpx.ASGITransport(app=async_client._transport.app, raise_app_exceptions=False),
+        base_url="http://test",
+    ) as client:
+        r = await client.get(
+            "/v4/history/trades",
+            headers={"Authorization": "Bearer FAKE-TEST-TOKEN-NOT-REAL"},
+        )
+
+    assert r.status_code == 500
+    assert "invalid trade history payload" in caplog.text
 
 
 # ── Item 6: activeSseConnections real counter ─────────────────────────────────

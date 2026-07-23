@@ -71,37 +71,35 @@ def closed_trade_payload(
     strategy_id: str = "unknown",
     exit_reason: str = "MANUAL",
     correlation_id: str | None = None,
+    deals: tuple[object, ...] | None = None,
 ) -> dict:
     from metascan.pipeline.outcome_handler import CLOSE_WHITELIST
     if exit_reason not in CLOSE_WHITELIST:
         raise ValueError(f"exitReason {exit_reason!r} not in {CLOSE_WHITELIST!r}")
-    pid = position_id_for(row.ticket)
-    gross = row.profit
-    commission = row.commission
-    swap = row.swap
-    net = gross + commission + swap
+    if deals is None:
+        raise ValueError("deal history required")
+    out = tuple(deal for deal in deals if int(getattr(deal, "entry", -1)) == 1)
+    if not out:
+        raise ValueError("OUT deal history required")
+    volume = sum(float(getattr(deal, "volume", 0.0)) for deal in out)
+    exit_price = sum(float(getattr(deal, "price", 0.0)) * float(getattr(deal, "volume", 0.0)) for deal in out) / volume
+    gross = sum(float(getattr(deal, "profit", 0.0)) for deal in out)
+    commission_including_fees = sum(float(getattr(deal, "commission", 0.0)) + float(getattr(deal, "fee", 0.0)) for deal in deals)
+    swap = sum(float(getattr(deal, "swap", 0.0)) for deal in deals)
+    closed_at = _msc_to_iso(max(int(getattr(deal, "time_msc", 0)) for deal in out))
+    opened_at = closed_at if row.time_msc == 0 else _msc_to_iso(row.time_msc)
+    net = gross + commission_including_fees + swap
     result = {
-        "tradeId": f"t-{row.ticket}",
-        "positionId": pid,
-        "strategyId": strategy_id,
-        "symbol": row.symbol,
-        "direction": direction_from_type(row.type),
-        "entryPrice": row.price_open,
-        "exitPrice": row.price_current,
-        "openedAt": closed_at if row.time_msc == 0 else _msc_to_iso(row.time_msc),
-        "closedAt": closed_at,
-        "holdingSeconds": 0,
-        "volumeInitial": row.volume,
-        "grossPnl": gross,
-        "commission": commission,
-        "swap": swap,
-        "netPnl": net,
-        "rMultiple": None,
-        "mfeR": None,
-        "maeR": None,
-        "exitReason": exit_reason,
-        "partialFills": [],
-        "tags": ["sp3-no-history"],
+        "tradeId": f"t-{row.ticket}", "positionId": position_id_for(row.ticket), "strategyId": strategy_id,
+        "symbol": row.symbol, "direction": direction_from_type(row.type), "entryPrice": row.price_open,
+        "exitPrice": exit_price, "openedAt": opened_at, "closedAt": closed_at,
+        "holdingSeconds": max(0, int((max(int(getattr(deal, "time_msc", 0)) for deal in out) - row.time_msc) / 1000)),
+        "volumeInitial": row.volume, "grossPnl": gross, "commission": commission_including_fees, "swap": swap,
+        "netPnl": net, "rMultiple": None, "mfeR": None, "maeR": None, "exitReason": exit_reason,
+        "partialFills": [] if len(out) == 1 else [
+            {"closedAt": _msc_to_iso(int(getattr(deal, "time_msc", 0))), "price": float(getattr(deal, "price", 0.0)), "volume": float(getattr(deal, "volume", 0.0)), "netPnl": float(getattr(deal, "profit", 0.0)) + float(getattr(deal, "commission", 0.0)) + float(getattr(deal, "fee", 0.0)) + float(getattr(deal, "swap", 0.0))}
+            for deal in out
+        ], "tags": ["deal-reconciled"],
     }
     if correlation_id is not None:
         result["correlationId"] = correlation_id

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from types import MappingProxyType
+from types import MappingProxyType, SimpleNamespace
 
 import pytest
 
@@ -98,9 +98,13 @@ async def _make_consumer(tmp_path: Path, pending=None) -> tuple[EventBus, Broker
     await bus.start()
     metrics = GatewayMetrics()
     slot = LatestFrameSlot(metrics)
+
+    async def deal_lookup(ticket: int):
+        return (SimpleNamespace(position_id=ticket, entry=1, volume=0.1, price=2301.0, time_msc=1_720_000_001_000, profit=15.0, commission=-2.0, swap=-0.5, fee=0.0),)
+
     consumer = BrokerStateConsumer(
         bus=bus, slot=slot, metrics=metrics, bot_magic=BOT,
-        runtime_id="rt1", pending=pending,
+        runtime_id="rt1", pending=pending, deal_lookup=deal_lookup,
     )
     return bus, consumer
 
@@ -109,6 +113,9 @@ async def _collect_events(bus: EventBus, consumer: BrokerStateConsumer, frames: 
     sub = await bus.subscribe("s-test", maxsize=2048)
     for frame in frames:
         await consumer.process_frame(frame)
+    await asyncio.sleep(0)
+    if frames:
+        await consumer.process_frame(_make_frame([], frames[-1].frame_id + 1))
     await asyncio.sleep(0.05)
     events = []
     while not sub._queue.empty():

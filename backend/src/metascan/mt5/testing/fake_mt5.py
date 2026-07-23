@@ -80,7 +80,10 @@ class FakeMt5:
 
     def history_deals_get(self, *args: Any, **kwargs: Any) -> tuple[SimpleNamespace, ...]:
         self._touch("history_deals_get")
-        return tuple(self._history_deals)
+        position = kwargs.get("position")
+        if position is None:
+            return tuple(self._history_deals)
+        return tuple(deal for deal in self._history_deals if int(getattr(deal, "position_id", 0)) == int(position))
 
     def order_check(self, request: Any) -> SimpleNamespace | None:
         self.order_check_requests.append(dict(request))
@@ -143,6 +146,9 @@ class FakeMt5:
         self._orders.clear()
         for row in rows:
             self._orders[int(row["ticket"])] = SimpleNamespace(**row)
+
+    def set_history_deals(self, rows: list[dict[str, Any]]) -> None:
+        self._history_deals = [SimpleNamespace(**row) for row in rows]
 
     def remove_position(self, ticket: int) -> None:
         self._positions.pop(ticket, None)

@@ -8,10 +8,14 @@ from __future__ import annotations
 # frontend cache; backend returns rows ordered newest-first).
 # Contract source: HANDOFF.md §10.6, runtime-types.ts TradeHistoryPage.
 
+import json
+import logging
 import sqlite3
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import ValidationError
 
+from metascan.contract.models import ClosedTrade
 from metascan.journal.db import Journal
 from metascan.web.dependencies import get_journal
 from metascan.web.security import verify_token
@@ -20,6 +24,7 @@ router = APIRouter()
 
 _MAX_LIMIT = 500
 _DEFAULT_LIMIT = 100
+logger = logging.getLogger(__name__)
 
 
 def _parse_cursor(cursor: str | None) -> int | None:
@@ -76,13 +81,14 @@ def _fetch_trades(
 
     trades: list[dict] = []
     for row in page:
+        sequence = row["sequence"] if hasattr(row, "__getitem__") else row[0]
         try:
-            import json
             envelope = json.loads(row["envelope_json"] if hasattr(row, "__getitem__") else row[1])
-            payload = envelope.get("payload", {})
-            trades.append(payload)
-        except Exception:
-            continue
+            trade = ClosedTrade.model_validate(envelope.get("payload", {}))
+        except (json.JSONDecodeError, TypeError, ValidationError):
+            logger.exception("invalid trade history payload at sequence %s", sequence)
+            raise
+        trades.append(trade.model_dump(mode="json", by_alias=True))
 
     next_cursor: str | None = None
     if has_more and page:

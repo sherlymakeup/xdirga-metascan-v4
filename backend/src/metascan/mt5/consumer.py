@@ -4,7 +4,7 @@ import asyncio
 import logging
 import uuid
 from dataclasses import replace
-from typing import Any, Mapping
+from typing import Any, Awaitable, Callable, Mapping
 
 from metascan.bus.event_bus import EventBus
 from metascan.contract.models import RuntimeEventEnvelope
@@ -16,6 +16,15 @@ from metascan.mt5.types import AccountRow, BrokerStateFrame, ConsumerFrameState,
 from metascan.mt5.mapping import position_id_for, position_payload, closed_trade_payload, protection_for, sl_or_none, tp_or_none
 
 logger = logging.getLogger("metascan.mt5.consumer")
+
+
+def _reconciliation_issue_payload(ticket: int, reason: str) -> dict:
+    return {
+        "entity": "POSITION", "entityId": position_id_for(ticket), "runtimeState": "CLOSED",
+        "brokerState": "DEAL_NOT_FOUND", "difference": "Position closed but no broker deal found",
+        "reason": reason, "severity": "HIGH",
+        "suggestedAction": "Check MT5 deal history and reconcile the position before further action", "resolved": False,
+    }
 
 
 def _envelope(
@@ -60,6 +69,7 @@ class BrokerStateConsumer:
         poll_cycle_p95_budget_ms: float = 400.0,
         hard_fail_threshold: int = 5,
         heartbeat_timeout_ms: float = 2000.0,
+        deal_lookup: Callable[[int], Awaitable[tuple[object, ...]]] | None = None,
     ) -> None:
         self._bus = bus
         self._slot = slot
@@ -73,6 +83,9 @@ class BrokerStateConsumer:
         self._poll_cycle_p95_budget_ms = poll_cycle_p95_budget_ms
         self._hard_fail_threshold = hard_fail_threshold
         self.heartbeat_timeout_ms = heartbeat_timeout_ms
+        self._deal_lookup = deal_lookup
+        self._reconciliation_pending: dict[int, tuple[PositionRow, str, str | None, str | None, int, float, asyncio.Task[tuple[object, ...]] | None]] = {}
+        self._reconciliation_terminal: set[int] = set()
         self._task: asyncio.Task[None] | None = None
         self._stop = asyncio.Event()
         self._last_frame_mono: float = self._mono.monotonic()
@@ -179,6 +192,18 @@ class BrokerStateConsumer:
 
     async def stop(self) -> None:
         self._stop.set()
+        if self._reconciliation_pending:
+            wall = self._wall.now_iso()
+            events = []
+            for ticket, (*_, lookup) in tuple(self._reconciliation_pending.items()):
+                if lookup is not None:
+                    lookup.cancel()
+                if ticket not in self._reconciliation_terminal:
+                    events.append(_envelope(type_="reconciliation.issue.detected", runtime_id=self._runtime_id, wall_iso=wall, payload=_reconciliation_issue_payload(ticket, "SHUTDOWN"), severity="WARNING", position_id=position_id_for(ticket)))
+                    self._reconciliation_terminal.add(ticket)
+            self._reconciliation_pending.clear()
+            for event in events:
+                await self._bus.publish(event, mutates_state=False)
         t = self._task
         if t is not None:
             t.cancel()
@@ -242,6 +267,34 @@ class BrokerStateConsumer:
         elif reasons != self._degrade_reasons:
             candidate = replace(self._frame_state, degrade_reasons=frozenset(reasons))
             await self._bus.publish_state_batch(self._frame_state_slot, candidate, ())
+
+    async def _reconcile_closed(self, wall: str) -> list[RuntimeEventEnvelope]:
+        published: list[RuntimeEventEnvelope] = []
+        for ticket, (row, exit_reason, cmd_id, corr_id, frames, started, lookup) in list(self._reconciliation_pending.items()):
+            if lookup is not None and lookup.done():
+                try:
+                    payload = closed_trade_payload(row, closed_at=wall, exit_reason=exit_reason, correlation_id=corr_id, deals=lookup.result())
+                except ValueError:
+                    failure = "OUT_DEALS_MISSING"
+                except BaseException:
+                    failure = "LOOKUP_FAILED"
+                else:
+                    event = _envelope(type_="trade.closed", runtime_id=self._runtime_id, wall_iso=wall, payload=payload, position_id=position_id_for(ticket))
+                    if cmd_id is not None:
+                        event = event.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
+                    published.append(event)
+                    self._reconciliation_terminal.add(ticket)
+                    del self._reconciliation_pending[ticket]
+                    continue
+            else:
+                failure = "LOOKUP_UNAVAILABLE" if lookup is None else "OUT_DEALS_MISSING"
+            if failure in {"LOOKUP_UNAVAILABLE", "LOOKUP_FAILED"} or frames >= 4 or self._mono.monotonic() - started >= 10:
+                published.append(_envelope(type_="reconciliation.issue.detected", runtime_id=self._runtime_id, wall_iso=wall, payload=_reconciliation_issue_payload(ticket, failure), severity="WARNING", position_id=position_id_for(ticket)))
+                self._reconciliation_terminal.add(ticket)
+                del self._reconciliation_pending[ticket]
+            else:
+                self._reconciliation_pending[ticket] = (row, exit_reason, cmd_id, corr_id, frames + 1, started, lookup)
+        return published
 
     async def process_frame(self, frame: BrokerStateFrame) -> list[RuntimeEventEnvelope]:
         published: list[RuntimeEventEnvelope] = []
@@ -380,18 +433,9 @@ class BrokerStateConsumer:
                         env_c = env_c.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
                     published.append(env_c)
 
-                    env_t = _envelope(
-                        type_="trade.closed",
-                        runtime_id=self._runtime_id,
-                        wall_iso=wall,
-                        payload=closed_trade_payload(
-                            old, closed_at=wall, exit_reason=exit_reason, correlation_id=corr_id,
-                        ),
-                        position_id=position_id_for(ticket),
-                    )
-                    if cmd_id is not None:
-                        env_t = env_t.model_copy(update={"command_id": cmd_id, "correlation_id": corr_id})
-                    published.append(env_t)
+                    if ticket not in self._reconciliation_terminal:
+                        lookup = None if self._deal_lookup is None else asyncio.create_task(self._deal_lookup(ticket))
+                        self._reconciliation_pending.setdefault(ticket, (old, exit_reason, cmd_id, corr_id, 0, now_m, lookup))
 
                     pending_clears.add(ticket)
                     del last_positions[ticket]
@@ -491,6 +535,7 @@ class BrokerStateConsumer:
                     published.append(env_up)
                 last_positions[ticket] = new
 
+            published.extend(await self._reconcile_closed(wall))
             dashboard = self._build_dashboard_frame(frame, new_state)
             candidate = ConsumerFrameState(
                 connection_state=new_state,

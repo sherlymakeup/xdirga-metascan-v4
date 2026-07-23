@@ -22,7 +22,7 @@ export const Route = createFileRoute("/analytics")({
   component: AnalyticsPage,
 });
 
-function AnalyticsPage() {
+export function AnalyticsPage() {
   const snap = useSnapshot();
   const journal = useTradeJournal();
   const stats = useMemo(() => computeJournalStats(journal.trades), [journal.trades]);
@@ -95,6 +95,11 @@ function AnalyticsPage() {
         title="Journal — closed trades"
         subtitle={`${stats.total} rows · ${journal.bySource.events} live · ${journal.bySource.history} history${journal.overwrittenByEvent > 0 ? ` · ${journal.overwrittenByEvent} overwritten by event` : ""}`}
       >
+        {journal.historyError && (
+          <div className="mb-3">
+            <StatusBadge tone="warn">{journal.historyError}</StatusBadge>
+          </div>
+        )}
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <StatTile
             label="Net PnL"
@@ -179,6 +184,7 @@ function AnalyticsPage() {
                   <th className="px-2 py-1.5 text-right">Swap</th>
                   <th className="px-2 py-1.5 text-right">Net</th>
                   <th className="px-2 py-1.5 text-right">R</th>
+                  <th className="px-2 py-1.5 text-left">Verification</th>
                   <th className="px-2 py-1.5 text-left">Exit</th>
                 </tr>
               </thead>
@@ -213,6 +219,21 @@ function AnalyticsPage() {
                         <span className="text-muted-foreground">n/a</span>
                       ) : (
                         <span>{fmtNum(t.rMultiple, 2)}R</span>
+                      )}
+                    </td>
+                    <td className="px-2 py-1.5">
+                      {t.tags.includes("sp3-no-history") ? (
+                        <StatusBadge tone="warn" size="sm">
+                          Unverified
+                        </StatusBadge>
+                      ) : t.tags.includes("deal-reconciled") ? (
+                        <StatusBadge tone="ok" size="sm">
+                          Deal reconciled
+                        </StatusBadge>
+                      ) : (
+                        <StatusBadge tone="neutral" size="sm">
+                          Unknown
+                        </StatusBadge>
                       )}
                     </td>
                     <td className="px-2 py-1.5 text-muted-foreground">{t.exitReason}</td>

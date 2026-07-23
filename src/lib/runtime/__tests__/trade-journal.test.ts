@@ -41,7 +41,6 @@ describe("trade journal store", () => {
     tradeJournalStore.ingestHistory([makeTrade({ tradeId: "a", netPnl: 12, grossPnl: 13 })]);
     const snap = tradeJournalStore.getSnapshot();
     expect(snap.trades).toHaveLength(1);
-    // Second history write overwrites first because both originate from history.
     expect(snap.trades[0]?.netPnl).toBe(12);
   });
 
@@ -59,6 +58,16 @@ describe("trade journal store", () => {
     tradeJournalStore.ingestHistory([makeTrade({ tradeId: "c", netPnl: 1 })]);
     const snap = tradeJournalStore.getSnapshot();
     expect(snap.trades[0]?.netPnl).toBe(100);
+  });
+
+  it("surfaces history errors and clears them after a successful history page", () => {
+    tradeJournalStore.setHistoryError("History unavailable");
+    expect(tradeJournalStore.getSnapshot().historyError).toBe("History unavailable");
+    expect(tradeJournalStore.getSnapshot().historyIncomplete).toBe(true);
+
+    tradeJournalStore.ingestHistory([makeTrade()]);
+    expect(tradeJournalStore.getSnapshot().historyError).toBeNull();
+    expect(tradeJournalStore.getSnapshot().historyIncomplete).toBe(false);
   });
 });
 
@@ -78,8 +87,7 @@ describe("R-multiple null policy", () => {
     expect(stats.avgR).toBeCloseTo((1.0 - 0.5) / 2, 8);
 
     const hist = computeRHistogram(trades);
-    const totalInHist = hist.reduce((s, b) => s + b.count, 0);
-    expect(totalInHist).toBe(2); // null R excluded from histogram
+    expect(hist.reduce((s, b) => s + b.count, 0)).toBe(2);
   });
 
   it("reports avgR as null when every trade has null R", () => {

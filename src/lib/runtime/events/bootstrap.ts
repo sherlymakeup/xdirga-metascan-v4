@@ -59,9 +59,10 @@ export function bootstrapEventPipeline() {
     .then((page) => {
       tradeJournalStore.ingestHistory(page.trades);
       tradeJournalStore.setNextCursor(page.nextCursor);
+      tradeJournalStore.clearHistoryError();
     })
     .catch(() => {
-      /* HttpRuntimeAdapter safe-fails with an empty page. */
+      tradeJournalStore.setHistoryError("History unavailable");
     })
     .finally(() => tradeJournalStore.setLoading(false));
 }
@@ -79,8 +80,9 @@ export async function loadMoreTradeHistory(limit = 100): Promise<void> {
     const page = await adapter.getTradeHistory({ cursor: snap.nextCursor, limit });
     tradeJournalStore.ingestHistory(page.trades);
     tradeJournalStore.setNextCursor(page.nextCursor);
+    tradeJournalStore.clearHistoryError();
   } catch {
-    /* ignore */
+    tradeJournalStore.setHistoryError("History incomplete");
   } finally {
     tradeJournalStore.setLoading(false);
   }
