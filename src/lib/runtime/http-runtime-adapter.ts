@@ -5,6 +5,7 @@
 import type { RuntimeAdapter } from "./runtime-adapter";
 import { RUNTIME_CONTRACT } from "./runtime-contract";
 import { buildCapabilities } from "./runtime-capabilities";
+import { validateRuntimeCapabilities } from "./capabilities-schema";
 import { createEmptySnapshot } from "@/lib/demo/scenarios";
 import { evaluateHandshake } from "./runtime-handshake";
 import { EventDeduplicator } from "./events/event-deduplicator";
@@ -27,8 +28,11 @@ import type {
 import type { CockpitSnapshot, TradeHistoryPage, TradeHistoryQuery } from "@/lib/types";
 
 const SSE_NAMED_TYPES = [...RUNTIME_EVENT_TYPES, "system.resync.required"] as const;
-// Client-observation threshold only; this is not a claim about server heartbeat delivery.
-export const CLIENT_OBSERVATION_STALE_AFTER_MS = 15_000;
+export const SERVER_HEARTBEAT_INTERVAL_MS = 15_000;
+export const CLIENT_HEARTBEAT_SLACK_MS = 5_000;
+// Client threshold permits two server heartbeat intervals plus delivery slack.
+export const CLIENT_OBSERVATION_STALE_AFTER_MS =
+  2 * SERVER_HEARTBEAT_INTERVAL_MS + CLIENT_HEARTBEAT_SLACK_MS;
 
 export interface HttpAdapterDependencies {
   fetch?: typeof fetch;
@@ -55,7 +59,7 @@ function joinUrl(baseUrl: string, path: string): string {
 
 function redactToken(text: string, token: string | undefined): string {
   if (!token || !text) return text;
-  return text.split(token).join("[redacted]");
+  return text.split(token).join("[redacted]").split(encodeURIComponent(token)).join("[redacted]");
 }
 
 function disconnectedEnvelope(): RuntimeSnapshotEnvelope {
@@ -220,6 +224,13 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     this.capabilities = caps;
   }
 
+  private acceptCapabilities(raw: unknown): RuntimeCapabilities {
+    const caps = validateRuntimeCapabilities(raw);
+    if (caps) return caps;
+    this.applyCapabilities(disabledCapabilities());
+    throw new Error("Invalid capabilities response.");
+  }
+
   private restHeaders(): HeadersInit {
     const headers: Record<string, string> = {
       Accept: "application/json",
@@ -364,6 +375,13 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       });
       this.observeClientActivity();
     };
+
+    const heartbeatHandler = () => {
+      if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
+      this.observeClientActivity();
+    };
+    es.addEventListener("heartbeat", heartbeatHandler as EventListener);
+    this.sseBoundHandlers.push({ type: "heartbeat", handler: heartbeatHandler });
 
     for (const type of SSE_NAMED_TYPES) {
       const handler = (ev: MessageEvent) => {
@@ -544,8 +562,9 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
         return;
       }
       this.setHandshake(hs);
-      const caps = (await this.restGet("/capabilities")) as RuntimeCapabilities;
+      const rawCapabilities = await this.restGet("/capabilities");
       if (generation !== this.connectGeneration) return;
+      const caps = this.acceptCapabilities(rawCapabilities);
       this.applyCapabilities(caps);
       const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
       if (generation !== this.connectGeneration) return;
@@ -592,7 +611,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
         });
         throw new Error(compat.reasons[0]?.message ?? "Handshake incompatible.");
       }
-      const caps = (await this.restGet("/capabilities")) as RuntimeCapabilities;
+      const caps = this.acceptCapabilities(await this.restGet("/capabilities"));
       if (generation !== this.connectGeneration) return;
       this.applyCapabilities(caps);
       const snap = this.acceptSnapshot(await this.restGet("/snapshot"));
@@ -611,11 +630,14 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
     } catch (e) {
       if (generation === this.connectGeneration) {
         const msg = redactToken(e instanceof Error ? e.message : "connect failed", this.authToken);
-        this.setConnection({
-          state: "ERROR",
-          errorMessage: msg,
-          lastDisconnectedAt: new Date(this.now()).toISOString(),
-        });
+        if (this.connection.errorCode !== "HANDSHAKE_INCOMPATIBLE") {
+          this.setConnection({
+            state: "ERROR",
+            errorMessage: msg,
+            lastDisconnectedAt: new Date(this.now()).toISOString(),
+          });
+          this.scheduleReconnect(generation);
+        }
       }
       throw e instanceof Error ? new Error(redactToken(e.message, this.authToken)) : e;
     } finally {
@@ -675,7 +697,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
   }
 
   async refreshCapabilities(): Promise<RuntimeCapabilities> {
-    const caps = (await this.restGet("/capabilities")) as RuntimeCapabilities;
+    const caps = this.acceptCapabilities(await this.restGet("/capabilities"));
     this.applyCapabilities(caps);
     return caps;
   }

@@ -16,7 +16,7 @@ from __future__ import annotations
 # Control frames (§3.3): connection stays OPEN on resync — generator continues.
 # Reasons: GAP_DETECTED | QUEUE_OVERFLOW | BOOT_MISMATCH | INTERNAL_ERROR
 #          | SEQUENCE_UNAVAILABLE (replay distance exceeds journal hard cap).
-# Heartbeat: SSE comment ":\n\n" every 15 s when queue is idle.
+# Heartbeat: named SSE heartbeat every 15 s when queue is idle.
 #
 # SSE connection counter: SseConnectionCounter tracks active connections so
 # /v4/ops/metrics can report activeSseConnections accurately.
@@ -167,7 +167,7 @@ class SseHandoff:
                 try:
                     item = await asyncio.wait_for(sub.get(), timeout=_HEARTBEAT_INTERVAL)
                 except asyncio.TimeoutError:
-                    yield ":\n\n"
+                    yield "event: heartbeat\ndata:\n\n"
                     continue
 
                 kind = getattr(item, "kind", None)

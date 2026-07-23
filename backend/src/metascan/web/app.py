@@ -10,26 +10,26 @@ from metascan.web.routers import capabilities, commands, handshake, health, hist
 
 
 class TokenRedactingFilter(logging.Filter):
-    _TOKEN_RE = re.compile(r"token=[a-zA-Z0-9_\-]+")
+    _TOKEN_RE = re.compile(r"([?&])token=[^&]*")
 
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
-            record.msg = self._TOKEN_RE.sub("token=***", record.msg)
-        if record.args:
-            new_args = []
-            for arg in record.args:
-                if isinstance(arg, str):
-                    new_args.append(self._TOKEN_RE.sub("token=***", arg))
-                else:
-                    new_args.append(arg)
-            record.args = tuple(new_args)
+            record.msg = self._TOKEN_RE.sub(r"\1token=***", record.getMessage())
+            record.args = ()
         return True
 
 
+def _add_redacting_filter(target: logging.Logger | logging.Handler) -> None:
+    if not any(isinstance(filter_, TokenRedactingFilter) for filter_ in target.filters):
+        target.addFilter(TokenRedactingFilter())
+
+
 def create_app() -> FastAPI:
-    for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi"):
-        logging.getLogger(name).addFilter(TokenRedactingFilter())
-    logging.getLogger().addFilter(TokenRedactingFilter())
+    loggers = tuple(logging.getLogger(name) for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", ""))
+    for logger in loggers:
+        _add_redacting_filter(logger)
+        for handler in logger.handlers:
+            _add_redacting_filter(handler)
 
     app = FastAPI(title="XDirga Metascan V4")
 

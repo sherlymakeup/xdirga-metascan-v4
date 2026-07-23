@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  CLIENT_OBSERVATION_STALE_AFTER_MS,
   HttpRuntimeAdapter,
   type HttpAdapterConfig,
   type HttpAdapterDependencies,
@@ -568,7 +569,7 @@ describe("MAJOR: stall emits STALE before RECONNECTING", () => {
     await adapter.connect();
     await flush();
     states.length = 0;
-    h.advance(15_000);
+    h.advance(CLIENT_OBSERVATION_STALE_AFTER_MS);
     expect(states.slice(0, 2)).toEqual(["STALE", "RECONNECTING"]);
   });
 });

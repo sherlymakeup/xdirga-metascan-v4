@@ -11,7 +11,7 @@ from __future__ import annotations
 #   - QUEUE_OVERFLOW → resync frame (stays open)
 #   - Race-free splice: replay then live events, no gap, no duplicate
 #   - _publish_lock released before streaming
-#   - Heartbeat comment frame on idle timeout
+#   - Named heartbeat frame on idle timeout; traffic suppresses it
 #   - Log token redaction
 #   - /v4/snapshot auth + shape
 #   - /v4/stream (old path) returns 404
@@ -179,13 +179,48 @@ def test_log_token_redaction_in_args():
     record = logging.LogRecord(
         name="test", level=logging.INFO, pathname="t.py", lineno=1,
         msg="request: %s",
-        args=("token=supersecret",),
+        args=("/v4/events?token=supersecret",),
         exc_info=None,
     )
     f = TokenRedactingFilter()
     f.filter(record)
-    assert "supersecret" not in str(record.args)
-    assert "token=***" in str(record.args)
+    assert "supersecret" not in record.getMessage()
+    assert "token=***" in record.getMessage()
+
+
+def test_app_redacts_query_token_in_rendered_records_for_configured_loggers():
+    class Capture(logging.Handler):
+        def __init__(self):
+            super().__init__()
+            self.messages: list[str] = []
+
+        def emit(self, record):
+            self.messages.append(self.format(record))
+
+    capture = Capture()
+    root = logging.getLogger()
+    root.addHandler(capture)
+    try:
+        create_app()
+        values = (
+            "TOKEN_PLACEHOLDER/raw=+ value",
+            "TOKEN_PLACEHOLDER%2Fraw%3D%2B+value",
+            "TOKEN_PLACEHOLDER/雪",
+        )
+        for name in ("uvicorn", "uvicorn.access", "uvicorn.error", "fastapi", "root"):
+            url = f"/v4/events/stream?other=keep%2Fvalue&token={values[0]}&token={values[1]}&token={values[2]}&repeat=ok"
+            logging.getLogger(name).warning("request: %s", url)
+            logging.getLogger(f"{name}.propagated").warning("request: %s", url)
+
+        assert capture.messages
+        for message in capture.messages:
+            assert "other=keep%2Fvalue" in message
+            assert "repeat=ok" in message
+            assert message.count("token=***") == 3
+            for value in values:
+                assert value not in message
+    finally:
+        root.removeHandler(capture)
 
 
 # ── bootId mismatch → 400 ─────────────────────────────────────────────────────
@@ -270,6 +305,31 @@ async def test_handoff_lock_released_after_subscribe(event_bus, journal_db):
     await anext(gen)  # initial ping
     assert not event_bus._publish_lock.locked()
     await event_bus.unsubscribe("sub-lock")
+
+
+@pytest.mark.asyncio
+async def test_handoff_idle_emits_named_heartbeat(event_bus, journal_db, monkeypatch):
+    handoff = SseHandoff(event_bus, journal_db)
+
+    async def timeout(awaitable, *_args, **_kwargs):
+        awaitable.close()
+        raise asyncio.TimeoutError
+
+    monkeypatch.setattr(asyncio, "wait_for", timeout)
+    gen = handoff.generate_stream("sub-heartbeat", event_bus.boot_id, 0)
+    assert await anext(gen) == ":\n\n"
+    assert await anext(gen) == "event: heartbeat\ndata:\n\n"
+    await gen.aclose()
+
+
+@pytest.mark.asyncio
+async def test_handoff_traffic_before_timeout_does_not_emit_heartbeat(event_bus, journal_db):
+    handoff = SseHandoff(event_bus, journal_db)
+    gen = handoff.generate_stream("sub-traffic", event_bus.boot_id, 0)
+    assert await anext(gen) == ":\n\n"
+    await event_bus.publish(_make_env(event_bus, 1))
+    assert "event: runtime.state.changed\n" in await anext(gen)
+    await gen.aclose()
 
 
 @pytest.mark.asyncio

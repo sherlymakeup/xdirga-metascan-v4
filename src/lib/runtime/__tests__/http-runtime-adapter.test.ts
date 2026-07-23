@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  CLIENT_HEARTBEAT_SLACK_MS,
+  CLIENT_OBSERVATION_STALE_AFTER_MS,
   HttpRuntimeAdapter,
+  SERVER_HEARTBEAT_INTERVAL_MS,
   type HttpAdapterConfig,
   type HttpAdapterDependencies,
 } from "../http-runtime-adapter";
@@ -8,6 +11,7 @@ import { RUNTIME_CONTRACT } from "../runtime-contract";
 import type { RuntimeHandshake } from "../runtime-types";
 import type { RuntimeEventEnvelope } from "../events/runtime-event-envelope";
 import { validateHandshake, validateSnapshot } from "../events/event-schemas";
+import { validateRuntimeCapabilities } from "../capabilities-schema";
 
 const TOKEN = "test-token-secret";
 const BASE = "http://127.0.0.1:8787/v4";
@@ -284,6 +288,7 @@ function createHarness(opts?: {
   handshake?: RuntimeHandshake | (() => RuntimeHandshake);
   snapshotSeq?: number;
   snapshot?: () => unknown | Promise<unknown>;
+  capabilities?: unknown | (() => unknown);
   failPaths?: Set<string>;
   commandPost?: (body: unknown) => unknown;
   commandGet?: (id: string) => unknown;
@@ -309,7 +314,12 @@ function createHarness(opts?: {
           : (opts?.handshake ?? compatibleHandshake());
       return jsonResponse(hs);
     }
-    if (path === "/capabilities") return jsonResponse(capabilitiesBody());
+    if (path === "/capabilities")
+      return jsonResponse(
+        typeof opts?.capabilities === "function"
+          ? opts.capabilities()
+          : (opts?.capabilities ?? capabilitiesBody()),
+      );
     if (path === "/snapshot")
       return jsonResponse(await (opts?.snapshot?.() ?? snapshotEnvelope(opts?.snapshotSeq ?? 10)));
     if (path === "/commands" && (init?.method ?? "GET").toUpperCase() === "POST") {
@@ -409,6 +419,33 @@ describe("runtime wire validation", () => {
     expect(validateSnapshot(market).ok).toBe(false);
   });
 
+  it("rejects missing, null, unknown, and mismatched capability commands", () => {
+    expect(validateRuntimeCapabilities(undefined)).toBeNull();
+    expect(validateRuntimeCapabilities({ ...capabilitiesBody(), commands: null })).toBeNull();
+    expect(validateRuntimeCapabilities({ ...capabilitiesBody(), revision: -1 })).toBeNull();
+    expect(validateRuntimeCapabilities({ ...capabilitiesBody(), revision: 1.5 })).toBeNull();
+    expect(
+      validateRuntimeCapabilities({ ...capabilitiesBody(), generatedAt: "not-a-timestamp" }),
+    ).toBeNull();
+    expect(
+      validateRuntimeCapabilities({
+        ...capabilitiesBody(),
+        commands: { unknown: capabilitiesBody().commands["runtime.pause"] },
+      }),
+    ).toBeNull();
+    expect(
+      validateRuntimeCapabilities({
+        ...capabilitiesBody(),
+        commands: {
+          "runtime.pause": {
+            ...capabilitiesBody().commands["runtime.pause"],
+            command: "runtime.start",
+          },
+        },
+      }),
+    ).toBeNull();
+  });
+
   it("rejects incomplete handshake broker semantics", () => {
     expect(validateHandshake({ ...compatibleHandshake(), brokerEnvironment: "PAPER" }).ok).toBe(
       false,
@@ -496,6 +533,66 @@ describe("HttpRuntimeAdapter", () => {
     await expect(adapter.connect()).rejects.toThrow();
     expect(adapter.getConnectionState().state).toBe("ERROR");
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+
+  it("capabilities invalid at connect fails closed before reconnecting", async () => {
+    const h = createHarness({
+      capabilities: { ...capabilitiesBody(), commands: { "runtime.pause": null } },
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    const states: string[] = [];
+    adapter.subscribeConnection((connection) => states.push(connection.state));
+
+    await expect(adapter.connect()).rejects.toThrow("Invalid capabilities response.");
+
+    expect(Object.values(adapter.getCapabilities().commands).every((cap) => !cap.allowed)).toBe(
+      true,
+    );
+    expect(states).not.toContain("CONNECTED");
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+    expect(h.timers.length).toBeGreaterThan(0);
+  });
+
+  it("capabilities invalid while reconnecting stays fail-safe and retries", async () => {
+    let body: unknown = capabilitiesBody();
+    const h = createHarness({ capabilities: () => body });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+
+    body = { ...capabilitiesBody(), commands: { "runtime.pause": null } };
+    FakeEventSource.instances[0].emitError();
+    h.advance(500);
+    await flush();
+    await flush();
+
+    expect(Object.values(adapter.getCapabilities().commands).every((cap) => !cap.allowed)).toBe(
+      true,
+    );
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+    expect(h.timers.length).toBeGreaterThan(0);
+  });
+
+  it("capabilities refresh rejects malformed body after atomically disabling commands", async () => {
+    let body: unknown = capabilitiesBody();
+    const h = createHarness({ capabilities: () => body });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    expect(adapter.getCapabilities().commands["runtime.pause"]?.allowed).toBe(true);
+
+    body = {
+      ...capabilitiesBody(),
+      commands: {
+        "runtime.pause": {
+          ...capabilitiesBody().commands["runtime.pause"],
+          command: "runtime.start",
+        },
+      },
+    };
+    await expect(adapter.refreshCapabilities()).rejects.toThrow("Invalid capabilities response.");
+    expect(Object.values(adapter.getCapabilities().commands).every((cap) => !cap.allowed)).toBe(
+      true,
+    );
   });
 
   it("K: hydrates capabilities+snapshot then one EventSource; listeners exact", async () => {
@@ -614,15 +711,55 @@ describe("HttpRuntimeAdapter", () => {
     expect(adapter.getConnectionState().state).toBe("DISCONNECTED");
   });
 
-  it("N: marks connected data stale after the client observation threshold", async () => {
+  it("N: heartbeat constants derive client stale observation threshold", () => {
+    expect(SERVER_HEARTBEAT_INTERVAL_MS).toBe(15_000);
+    expect(CLIENT_HEARTBEAT_SLACK_MS).toBe(5_000);
+    expect(CLIENT_OBSERVATION_STALE_AFTER_MS).toBe(
+      2 * SERVER_HEARTBEAT_INTERVAL_MS + CLIENT_HEARTBEAT_SLACK_MS,
+    );
+  });
+
+  it("N: repeated heartbeat keeps the connection CONNECTED across intervals", async () => {
     const h = createHarness();
     const adapter = new HttpRuntimeAdapter(h.config);
     await adapter.connect();
     await flush();
+    const es = FakeEventSource.instances[0];
+
+    for (let i = 0; i < 3; i += 1) {
+      h.advance(SERVER_HEARTBEAT_INTERVAL_MS);
+      es.emitNamed("heartbeat", "");
+      expect(adapter.getConnectionState().state).toBe("CONNECTED");
+    }
+  });
+
+  it("N: stale threshold is measured from the last heartbeat", async () => {
+    const h = createHarness();
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+    const es = FakeEventSource.instances[0];
+    h.advance(SERVER_HEARTBEAT_INTERVAL_MS);
+    es.emitNamed("heartbeat", "");
+    h.advance(CLIENT_OBSERVATION_STALE_AFTER_MS - 100);
     expect(adapter.getConnectionState().state).toBe("CONNECTED");
-    h.advance(15_000);
+    h.advance(100);
     expect(adapter.getConnectionState().state).toBe("RECONNECTING");
-    expect(adapter.getConnectionState().dataAgeMs).toBe(15_000);
+  });
+
+  it("N: heartbeat does not mutate sequence, domain events, or snapshot", async () => {
+    const h = createHarness();
+    const adapter = new HttpRuntimeAdapter(h.config);
+    const events: string[] = [];
+    adapter.subscribeEvents((event) => events.push(event.eventId));
+    await adapter.connect();
+    await flush();
+    const before = adapter.getSnapshotEnvelope();
+    FakeEventSource.instances[0].emitNamed("heartbeat", "");
+
+    expect(adapter.getSnapshotEnvelope()).toBe(before);
+    expect(adapter.getSnapshotEnvelope().metadata.sequence).toBe(10);
+    expect(events).toEqual([]);
   });
 
   it("O: network error rejects honestly; no fixture fallback", async () => {
@@ -633,6 +770,49 @@ describe("HttpRuntimeAdapter", () => {
     expect(adapter.isDemo()).toBe(false);
     expect(adapter.getDescriptor().dataSource).toBe("LOCAL_RUNTIME");
     expect(adapter.getSnapshot().runtime.id).toBe("rt_disconnected");
+  });
+
+  it("T2: transient initial connect rejects but schedules recovery to CONNECTED", async () => {
+    const failPaths = new Set(["/handshake"]);
+    const h = createHarness({ failPaths });
+    const adapter = new HttpRuntimeAdapter(h.config);
+
+    await expect(adapter.connect()).rejects.toThrow();
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+    expect(h.timers).toHaveLength(1);
+
+    failPaths.delete("/handshake");
+    h.advance(500);
+    for (let i = 0; i < 20 && adapter.getConnectionState().state !== "CONNECTED"; i += 1) {
+      await flush();
+    }
+
+    expect(adapter.getConnectionState().state).toBe("CONNECTED");
+  });
+
+  it("T2: incompatible initial handshake stays ERROR without a retry timer", async () => {
+    const h = createHarness({
+      handshake: compatibleHandshake({ protocolVersion: "5.0.0", schemaVersion: "2.0.0" }),
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+
+    await expect(adapter.connect()).rejects.toThrow();
+
+    expect(adapter.getConnectionState().state).toBe("ERROR");
+    expect(adapter.getConnectionState().errorCode).toBe("HANDSHAKE_INCOMPATIBLE");
+    expect(h.timers).toHaveLength(0);
+  });
+
+  it("T2: disconnect during initial-connect retry clears the retry", async () => {
+    const h = createHarness({ failPaths: new Set(["/handshake"]) });
+    const adapter = new HttpRuntimeAdapter(h.config);
+
+    await expect(adapter.connect()).rejects.toThrow();
+    expect(adapter.getConnectionState().state).toBe("RECONNECTING");
+    await adapter.disconnect();
+
+    expect(adapter.getConnectionState().state).toBe("DISCONNECTED");
+    expect(h.timers).toHaveLength(0);
   });
 
   it("O: malformed SSE payload does not throw; getters safe", async () => {
@@ -828,6 +1008,19 @@ describe("HttpRuntimeAdapter", () => {
     expect(errMsg).not.toContain("super-secret-token-xyz");
   });
 
+  it("errors never include encoded auth token", async () => {
+    const token = "TOKEN_PLACEHOLDER/raw=+ value";
+    const encoded = encodeURIComponent(token);
+    const h = createHarness({ failPaths: new Set(["/handshake"]) });
+    h.config.fetch = async () => {
+      throw new Error(`request failed: ?token=${encoded}`);
+    };
+    const adapter = new HttpRuntimeAdapter({ ...h.config, authToken: token });
+
+    await expect(adapter.connect()).rejects.not.toThrow(encoded);
+    expect(adapter.getConnectionState().errorMessage ?? "").not.toContain(encoded);
+  });
+
   it("refreshes one authoritative snapshot for coalesced valid events", async () => {
     const h = createHarness({ snapshotSeq: 10 });
     const adapter = new HttpRuntimeAdapter(h.config);
@@ -948,7 +1141,7 @@ describe("HttpRuntimeAdapter", () => {
     });
     await adapter.connect();
     await flush();
-    h.advance(15_000);
+    h.advance(CLIENT_OBSERVATION_STALE_AFTER_MS);
     expect(adapter.getConnectionState().state).toBe("RECONNECTING");
     h.advance(1);
     await flush();
