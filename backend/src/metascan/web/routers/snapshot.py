@@ -19,6 +19,7 @@ from metascan.web.security import verify_token
 router = APIRouter()
 
 _RUNTIME_ID = "xdirga"
+ACCOUNT_FRESHNESS_MAX_AGE_MS = 2000.0
 
 
 def _empty_snapshot() -> dict:
@@ -37,7 +38,7 @@ def _empty_snapshot() -> dict:
             "buildHash": "dev",
             "environment": "LOCAL",
             "tradingMode": "TRIAL",
-            "state": "READY",
+            "state": "DISCONNECTED",
             "previousState": "INITIALIZING",
             "stateChangedAt": None,
             "stateReason": "SP4_NO_MT5",
@@ -129,6 +130,17 @@ def _ownership(*, magic: int, bot_magic: int | None) -> str:
     return "BOT_MANAGED" if magic == bot_magic else "FOREIGN"
 
 
+def _account_mode(trade_mode: int) -> str:
+    return "LIVE" if trade_mode == 2 else "TRIAL"
+
+
+def _observation_age_ms(observed_at: str | None, *, now_utc: datetime.datetime) -> float:
+    if observed_at is None:
+        return float("inf")
+    observed = datetime.datetime.fromisoformat(observed_at.replace("Z", "+00:00"))
+    return max(0.0, (now_utc - observed).total_seconds() * 1000)
+
+
 def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> dict:
     snapshot = _empty_snapshot()
     snapshot.update({
@@ -216,6 +228,14 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
         if tick.symbol in state.symbol_meta
     ]
     if state.account is not None:
+        account_mode = _account_mode(state.account.trade_mode)
+        account_fresh = (
+            state.account_available
+            and connected
+            and _observation_age_ms(state.account_observed_at, now_utc=now_utc) <= ACCOUNT_FRESHNESS_MAX_AGE_MS
+        )
+        snapshot["runtime"]["tradingMode"] = account_mode
+        snapshot["broker"]["accountMode"] = account_mode
         same_observation = (
             state.account_frame_id is not None
             and state.account_frame_id == state.positions_frame_id
@@ -233,7 +253,7 @@ def _read_snapshot(state: DashboardReadState, *, now_utc: datetime.datetime) -> 
             "floatingPnl": floating_pnl,
             "openPositions": open_positions,
             "updatedAt": state.account_observed_at,
-            "freshness": "FRESH" if state.account_available else "STALE",
+            "freshness": "FRESH" if account_fresh else "STALE",
         })
     return snapshot
 

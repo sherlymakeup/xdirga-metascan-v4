@@ -4,7 +4,7 @@ import datetime
 import pytest
 
 from metascan.mt5.mapping import position_payload
-from metascan.mt5.types import DashboardReadState, PositionRow
+from metascan.mt5.types import AccountRow, DashboardReadState, PositionRow
 from metascan.web.routers.snapshot import _empty_snapshot, _read_snapshot
 
 
@@ -36,6 +36,60 @@ def test_empty_snapshot_runtime_timestamps_are_null():
         assert rt[field] is None, (
             f"empty snapshot runtime.{field} must be null, got {rt[field]!r}"
         )
+
+
+def test_empty_snapshot_runtime_is_disconnected():
+    assert _empty_snapshot()["runtime"]["state"] == "DISCONNECTED"
+
+
+def _account_state(*, connection_state: str, observed_at: str) -> DashboardReadState:
+    return DashboardReadState(
+        connection_state=connection_state,
+        account=AccountRow(
+            login=123456,
+            balance=1000.0,
+            equity=1000.0,
+            margin=0.0,
+            free_margin=1000.0,
+            margin_level=0.0,
+            currency="USD",
+            trade_mode=0,
+            margin_mode=2,
+        ),
+        positions=(),
+        ticks={},
+        symbol_meta={},
+        bot_magic=999,
+        tick_age_budget_ms=1000.0,
+        last_frame_id=1,
+        last_frame_at=observed_at,
+        poll_latency_ms=10.0,
+        account_available=True,
+    )
+
+
+def test_snapshot_account_modes_follow_verified_broker_trade_mode():
+    now = datetime.datetime(2026, 7, 22, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    state = _account_state(connection_state="CONNECTED", observed_at="2026-07-22T12:00:00Z")
+
+    snapshot = _read_snapshot(state, now_utc=now)
+
+    assert snapshot["runtime"]["tradingMode"] == "TRIAL"
+    assert snapshot["broker"]["accountMode"] == "TRIAL"
+
+
+def test_account_freshness_is_stale_when_broker_disconnected():
+    now = datetime.datetime(2026, 7, 22, 12, 0, 0, tzinfo=datetime.timezone.utc)
+    state = _account_state(connection_state="DISCONNECTED", observed_at="2026-07-22T12:00:00Z")
+
+    assert _read_snapshot(state, now_utc=now)["account"]["freshness"] == "STALE"
+
+
+def test_account_freshness_is_stale_when_observation_exceeds_budget():
+    now = datetime.datetime(2026, 7, 22, 12, 0, 3, tzinfo=datetime.timezone.utc)
+    state = _account_state(connection_state="CONNECTED", observed_at="2026-07-22T12:00:00Z")
+
+    assert _read_snapshot(state, now_utc=now)["account"]["freshness"] == "STALE"
 
 
 def test_empty_snapshot_runtime_host_fields_are_null():

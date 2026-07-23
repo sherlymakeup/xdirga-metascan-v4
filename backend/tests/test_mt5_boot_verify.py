@@ -69,6 +69,20 @@ async def test_boot_hedging_mismatch() -> None:
     gw.stop()
 
 
+async def test_boot_trial_environment_rejects_live_account() -> None:
+    fake = FakeMt5()
+    fake.set_account(**default_account(login=123456, trade_mode=2))
+    fake.add_symbol("XAUUSDm", **default_symbol_info("XAUUSDm"))
+    metrics = GatewayMetrics()
+    slot = LatestFrameSlot(metrics)
+    loop = asyncio.get_running_loop()
+    gw = Mt5Gateway(fake, config=_cfg(broker_environment="TRIAL"), slot=slot, loop=loop, metrics=metrics)
+    gw.start()
+    with pytest.raises(GatewayBootError, match="environment"):
+        gw.wait_boot(timeout=3.0)
+    gw.stop()
+
+
 async def test_boot_success() -> None:
     fake = FakeMt5()
     fake.set_account(**default_account(login=123456))

@@ -80,6 +80,12 @@ export function useGlobalOperationalState(): GlobalOperationalState {
       reasons.push(`Runtime connection ${conn.state}.`);
     }
 
+    if (snapshot.broker?.connection === "DISCONNECTED") {
+      state = worse(state, "DISCONNECTED");
+      reasons.push("Broker connection DISCONNECTED.");
+      recommended.push("Restore broker connectivity.");
+    }
+
     // Broker freshness
     const brokerLevel = classifyFreshness("broker", conn.dataAgeMs ?? 0);
     if (brokerLevel !== "FRESH") {

@@ -187,7 +187,7 @@ async def test_account_row_to_wire_exact():
     assert acc["margin"] == 250.0
     assert acc["freeMargin"] == 24_870.75
     assert acc["marginLevel"] == 10048.3
-    assert acc["freshness"] == "FRESH"
+    assert acc["freshness"] == "STALE"
     assert acc["realizedPnlToday"] is None
     assert broker["loginMasked"] == "***"
     assert "987654321" not in str(body)

@@ -93,6 +93,7 @@ def create_wired_app(
                 symbol_suffix=symbol_suffix,
                 watchlist_bases=watchlist_bases,
                 bot_magic=bot_magic,
+                broker_environment=config.runtime.broker_environment if config is not None else "TRIAL",
             )
             gateway = Mt5Gateway(
                 resolved_module,

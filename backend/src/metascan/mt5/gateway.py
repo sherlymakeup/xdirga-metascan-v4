@@ -41,6 +41,7 @@ class GatewayConfig:
     symbol_suffix: str
     watchlist_bases: tuple[str, ...]
     bot_magic: int
+    broker_environment: str = "TRIAL"
     poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS
     require_hedging: bool = True
     path: str | None = None
@@ -137,6 +138,13 @@ class Mt5Gateway:
         if cfg.login is not None and int(acc.login) != int(cfg.login):
             raise GatewayBootError(
                 f"login mismatch: expected {cfg.login} got {acc.login}"
+            )
+        actual_environment = {0: "TRIAL", 2: "LIVE"}.get(
+            int(getattr(acc, "trade_mode", -1)), "UNKNOWN"
+        )
+        if actual_environment != cfg.broker_environment:
+            raise GatewayBootError(
+                f"broker environment mismatch: expected {cfg.broker_environment} got {actual_environment}"
             )
         margin_mode = int(getattr(acc, "margin_mode", -1))
         if cfg.require_hedging and margin_mode != ACCOUNT_MARGIN_MODE_RETAIL_HEDGING:

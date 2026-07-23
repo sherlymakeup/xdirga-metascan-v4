@@ -101,7 +101,7 @@ async def test_snapshot_uses_retained_mt5_read_state(app_client):
     assert snapshot["broker"]["connection"] == "CONNECTED"
     assert snapshot["broker"]["avgLatencyMs"] == 8.0
     assert snapshot["account"]["equity"] == 1010.0
-    assert snapshot["account"]["freshness"] == "FRESH"
+    assert snapshot["account"]["freshness"] == "STALE"
     assert snapshot["account"]["updatedAt"] == snapshot["accountObservedAt"]
     assert snapshot["positions"][0]["brokerTicket"] == "7"
     assert snapshot["positions"][0]["ownership"] == "FOREIGN"
