@@ -113,7 +113,7 @@ async def test_second_entry_blocked_by_first_inflight(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_stale_lock_retained_after_verification_budget(tmp_path: Path) -> None:
-    """Exhausted verification budget: FAILED with lock retained, no stale lock after second entry."""
+    """Exhausted verification budget: EXECUTION_UNKNOWN with lock retained."""
     journal = Journal(tmp_path / "db.sqlite")
     bus = EventBus(journal)
     await bus.start()
@@ -131,7 +131,7 @@ async def test_stale_lock_retained_after_verification_budget(tmp_path: Path) -> 
         await asyncio.sleep(0.8)
         row1 = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (r1.command_id,)).fetchone())
         assert row1 is not None
-        assert row1[0] == "FAILED"
+        assert row1[0] == "EXECUTION_UNKNOWN"
         assert pipeline.mutation_in_flight
     finally:
         pipeline._task.cancel()

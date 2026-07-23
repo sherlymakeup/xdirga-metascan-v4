@@ -563,7 +563,7 @@ export class HttpRuntimeAdapter implements RuntimeAdapter {
       }
       this.setHandshake(hs);
       const rawCapabilities = await this.restGet("/capabilities");
-      if (generation !== this.connectGeneration) return;
+      if (generation !== this.connectGeneration || this.intentionalDisconnect) return;
       const caps = this.acceptCapabilities(rawCapabilities);
       this.applyCapabilities(caps);
       const snap = this.acceptSnapshot(await this.restGet("/snapshot"));

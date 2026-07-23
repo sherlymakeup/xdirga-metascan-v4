@@ -70,7 +70,7 @@ async def test_entry_lacking_position_goes_execution_unknown(tmp_path: Path) -> 
         await asyncio.sleep(0.8)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
         assert row is not None
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
         events = []
         for _ in range(30):
             try:

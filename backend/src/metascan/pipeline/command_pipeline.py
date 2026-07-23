@@ -46,6 +46,16 @@ def verdict(kind: str, verify_result: dict[str, Any]) -> tuple[bool | None, str 
     order_exists = verify_result.get("orderExists")
     ticket = verify_result.get("ticket")
 
+    if kind in {"position.close", "position.closePartial", "position.modifyProtection"} and verify_result.get("positionsAvailable") is False:
+        return None, "POSITIONS_UNAVAILABLE"
+    if kind == "order.cancel" and verify_result.get("ordersAvailable") is False:
+        return None, "ORDERS_UNAVAILABLE"
+    if kind == "INTERNAL_ENTRY_MARKET":
+        if verify_result.get("positionsAvailable") is False:
+            return None, "POSITIONS_UNAVAILABLE"
+        if verify_result.get("dealsAvailable") is False:
+            return None, "DEALS_UNAVAILABLE"
+
     if kind in ("position.close",):
         if position_exists is False:
             return True, None
@@ -667,7 +677,6 @@ class CommandPipeline:
         self._facts.unlock_entity(scope)
 
     async def _verification_unresolved(self, status: RuntimeCommandStatus, scope: str, target: str | None) -> None:
-        await self._transition(status, "FAILED", reason="OUTCOME_AMBIGUOUS", event_type="command.failed")
         alert_payload = {"commandId": status.command_id, "targetScope": scope, "reason": "OUTCOME_AMBIGUOUS"}
         await self._bus.publish(
             RuntimeEventEnvelope(event_id=str(uuid.uuid4()), type="alert.created", runtime_id=self._runtime_id,
@@ -679,7 +688,6 @@ class CommandPipeline:
         )
 
     async def _verification_unresolved_internal(self, record: InternalCommandRecord, scope: str, target: str | None) -> None:
-        await self._transition_internal(record, "FAILED", reason="OUTCOME_AMBIGUOUS", event_type="command.failed")
         alert_payload = {"commandId": record.command_id, "targetScope": scope, "reason": "OUTCOME_AMBIGUOUS"}
         await self._bus.publish(
             RuntimeEventEnvelope(event_id=str(uuid.uuid4()), type="alert.created", runtime_id=self._runtime_id,
@@ -690,6 +698,23 @@ class CommandPipeline:
             mutates_state=False,
         )
 
+    @staticmethod
+    def _sweep_domain(sweep: Any, domain: str) -> tuple[tuple[dict[str, Any], ...], bool]:
+        if not isinstance(sweep, dict):
+            return (), False
+        available = sweep.get(f"{domain}Available")
+        items = sweep.get(domain)
+        if available is False or items is None:
+            return (), False
+        return tuple(items or ()), True
+
+    async def _unknown_bulk(self, status: RuntimeCommandStatus, scope: str, kind: str, counts: dict[str, int], straggler_ids: list[str], *, safety: bool = False) -> None:
+        payload = {"counts": counts, "stragglerIds": straggler_ids}
+        await self._transition(status, "EXECUTION_UNKNOWN", reason="OUTCOME_AMBIGUOUS", event_type="command.execution_unknown", extra=payload)
+        await self._verification_unresolved(status, scope, None)
+        if safety:
+            await self._emit_safety("safety.kill.failed", status, "CRITICAL", extra=payload)
+
     async def _bulk(self, status: RuntimeCommandStatus, kind: str, origin: str = "TRANSPORT") -> None:
         counts = {"successful": 0, "failed": 0, "unknown": 0, "skipped": 0, "remaining": 0, "foreignObserved": 0}
         straggler_ids: list[str] = []
@@ -697,13 +722,16 @@ class CommandPipeline:
 
         sweep = await asyncio.wrap_future(self._gateway.sweep_facts())
         if kind == "order.cancelAll":
-            items = sweep.get("orders", ()) if isinstance(sweep, dict) else ()
+            items, available = self._sweep_domain(sweep, "orders")
             child_kind = "order.cancel"
             child_scope_fmt = "order.cancel:{}"
         else:
-            items = sweep.get("positions", ()) if isinstance(sweep, dict) else ()
+            items, available = self._sweep_domain(sweep, "positions")
             child_kind = "position.close"
             child_scope_fmt = "position.close:{}"
+        if not available:
+            await self._unknown_bulk(status, f"{kind}:all", kind, counts, straggler_ids)
+            return
 
         for item in items:
             if item.get("magic") != self._bot_magic:
@@ -742,10 +770,11 @@ class CommandPipeline:
 
         # Rescan for stragglers (orders/positions that remain despite successful individual closes)
         rescan = await asyncio.wrap_future(self._gateway.sweep_facts())
-        if kind == "order.cancelAll":
-            remaining = rescan.get("orders", ()) if isinstance(rescan, dict) else ()
-        else:
-            remaining = rescan.get("positions", ()) if isinstance(rescan, dict) else ()
+        domain = "orders" if kind == "order.cancelAll" else "positions"
+        remaining, available = self._sweep_domain(rescan, domain)
+        if not available:
+            await self._unknown_bulk(status, f"{kind}:all", kind, counts, straggler_ids)
+            return
         for item in remaining:
             if item.get("magic") == self._bot_magic:
                 straggler_ids.append(str(item["ticket"]))
@@ -778,11 +807,11 @@ class CommandPipeline:
 
         sweep = await asyncio.wrap_future(self._gateway.sweep_facts())
         if kind == "order.cancelAll":
-            items = sweep.get("orders", ()) if isinstance(sweep, dict) else ()
+            items, available = self._sweep_domain(sweep, "orders")
             child_kind = "order.cancel"
             child_scope_fmt = "order.cancel:{}"
         else:
-            items = sweep.get("positions", ()) if isinstance(sweep, dict) else ()
+            items, available = self._sweep_domain(sweep, "positions")
             child_kind = "position.close"
             child_scope_fmt = "position.close:{}"
 
@@ -820,7 +849,7 @@ class CommandPipeline:
             outcome = await self._execute_child(cs, child_kind, {}, scope, origin)
             counts[outcome] += 1
 
-        return {"counts": counts, "child_kind": child_kind}
+        return {"counts": counts, "child_kind": child_kind, "available": available}
 
     async def _emergency(self, status: RuntimeCommandStatus, origin: str = "TRANSPORT") -> None:
         # Halt BEFORE any I/O
@@ -837,11 +866,13 @@ class CommandPipeline:
         await self._emit_safety("safety.kill.progress", status, "INFO", extra={"phase": "positionsClosed", "counts": pos_counts})
         # Rescan for stragglers
         remaining = await asyncio.wrap_future(self._gateway.sweep_facts())
+        orders, orders_available = self._sweep_domain(remaining, "orders")
+        positions, positions_available = self._sweep_domain(remaining, "positions")
         stragglers: list[str] = []
-        for o in (remaining.get("orders", ()) if isinstance(remaining, dict) else ()):
+        for o in orders:
             if o.get("magic") == self._bot_magic:
                 stragglers.append(f"order:{o.get('ticket')}")
-        for p in (remaining.get("positions", ()) if isinstance(remaining, dict) else ()):
+        for p in positions:
             if p.get("magic") == self._bot_magic:
                 stragglers.append(f"position:{p.get('ticket')}")
         total_counts = {
@@ -856,7 +887,9 @@ class CommandPipeline:
             "counts": total_counts,
             "stragglerIds": stragglers,
         }
-        if stragglers:
+        if not order_result["available"] or not pos_result["available"] or not orders_available or not positions_available:
+            await self._unknown_bulk(status, "runtime", "runtime.emergencyKill", total_counts, stragglers, safety=True)
+        elif stragglers:
             await self._transition(status, "FAILED", reason="BROKER_REJECTED", event_type="command.failed", extra=payload)
             await self._emit_safety("safety.kill.failed", status, "CRITICAL", extra={"stragglerIds": stragglers})
             alert = RuntimeEventEnvelope(

@@ -138,7 +138,7 @@ async def test_configured_poll_interval_honored(tmp_path: Path) -> None:
         assert "EXECUTION_UNKNOWN" in str(journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())[0])
         await asyncio.sleep(0.8)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
     finally:
         pipeline._task.cancel()
         try: await pipeline._task

@@ -83,6 +83,42 @@ async def test_boot_trial_environment_rejects_live_account() -> None:
     gw.stop()
 
 
+async def test_verify_preserves_unavailable_read_domains_and_errors() -> None:
+    class VerificationMt5:
+        def __init__(self) -> None:
+            self._positions = [None, ()]
+            self._errors = [(101, "positions unavailable"), (202, "orders unavailable"), (303, "deals unavailable")]
+
+        def positions_get(self):
+            return self._positions.pop(0)
+
+        def orders_get(self):
+            return None
+
+        def history_deals_get(self, *_args):
+            return None
+
+        def last_error(self):
+            return self._errors.pop(0)
+
+    metrics = GatewayMetrics()
+    gateway = Mt5Gateway(
+        VerificationMt5(), config=_cfg(), slot=LatestFrameSlot(metrics),
+        loop=asyncio.get_running_loop(), metrics=metrics,
+    )
+
+    result = gateway._verify_on_gateway_thread("command-1", "position.close", "7", {})
+
+    assert result["positionsAvailable"] is False
+    assert result["ordersAvailable"] is False
+    assert result["dealsAvailable"] is False
+    assert result["positionsError"] == (101, "positions unavailable")
+    assert result["ordersError"] == (202, "orders unavailable")
+    assert result["dealsError"] == (303, "deals unavailable")
+    assert result["positionExists"] is None
+    assert result["orderExists"] is None
+
+
 async def test_boot_success() -> None:
     fake = FakeMt5()
     fake.set_account(**default_account(login=123456))

@@ -274,13 +274,13 @@ class FakeEventSource {
 
 type FetchCall = { url: string; init?: RequestInit };
 
-function jsonResponse(body: unknown, status = 200): Response {
+function jsonResponse(body: unknown | Promise<unknown>, status = 200): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
     statusText: status === 200 ? "OK" : "ERR",
-    json: async () => body,
-    text: async () => JSON.stringify(body),
+    json: async () => await body,
+    text: async () => JSON.stringify(await body),
   } as Response;
 }
 
@@ -288,7 +288,7 @@ function createHarness(opts?: {
   handshake?: RuntimeHandshake | (() => RuntimeHandshake);
   snapshotSeq?: number;
   snapshot?: () => unknown | Promise<unknown>;
-  capabilities?: unknown | (() => unknown);
+  capabilities?: unknown | (() => unknown | Promise<unknown>);
   failPaths?: Set<string>;
   commandPost?: (body: unknown) => unknown;
   commandGet?: (id: string) => unknown;
@@ -571,6 +571,33 @@ describe("HttpRuntimeAdapter", () => {
     );
     expect(adapter.getConnectionState().state).toBe("RECONNECTING");
     expect(h.timers.length).toBeGreaterThan(0);
+  });
+
+  it("ignores stale invalid capabilities from an earlier reconnect generation", async () => {
+    let calls = 0;
+    let resolveStale!: (value: unknown) => void;
+    const stale = new Promise<unknown>((resolve) => {
+      resolveStale = resolve;
+    });
+    const h = createHarness({
+      capabilities: () => {
+        calls += 1;
+        return calls === 2 ? stale : capabilitiesBody();
+      },
+    });
+    const adapter = new HttpRuntimeAdapter(h.config);
+    await adapter.connect();
+    await flush();
+
+    FakeEventSource.instances[0].emitError();
+    h.advance(250);
+    await flush();
+    await adapter.connect();
+    await flush();
+    resolveStale({ ...capabilitiesBody(), commands: { "runtime.pause": null } });
+    await flush();
+
+    expect(adapter.getCapabilities().commands["runtime.pause"]?.allowed).toBe(true);
   });
 
   it("capabilities refresh rejects malformed body after atomically disabling commands", async () => {

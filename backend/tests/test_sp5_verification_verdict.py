@@ -23,7 +23,7 @@ import pytest
 
 from metascan.bus.event_bus import EventBus
 from metascan.journal.db import Journal
-from metascan.pipeline.command_pipeline import CommandPipeline
+from metascan.pipeline.command_pipeline import CommandPipeline, verdict
 from metascan.pipeline.facts import RuntimeFactsProvider
 from metascan.pipeline.pending_intent import PendingIntentRegistry
 from metascan.pipeline.request import CommandRequest, InternalEntryRequest
@@ -508,7 +508,7 @@ async def test_unresolved_verification_stays_unknown_with_critical_alert_retaine
             "SELECT state, record_json FROM commands WHERE command_id=?", (status.command_id,)
         ).fetchone())
         assert row is not None
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
         record = __import__("json").loads(row[1])
         assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight
@@ -523,6 +523,29 @@ async def test_unresolved_verification_stays_unknown_with_critical_alert_retaine
         try: await pipeline._task
         except asyncio.CancelledError: pass
         await bus.close()
+
+
+# ===================================================================
+# AVAILABILITY: unavailable domain cannot prove execution
+# ===================================================================
+
+@pytest.mark.parametrize(
+    ("kind", "facts", "expected"),
+    [
+        ("position.close", {"positionsAvailable": False, "positionExists": False}, (None, "POSITIONS_UNAVAILABLE")),
+        ("position.closePartial", {"positionsAvailable": False, "partialExecuted": True, "postVolume": 0.05}, (None, "POSITIONS_UNAVAILABLE")),
+        ("position.modifyProtection", {"positionsAvailable": False, "modifyExecuted": True}, (None, "POSITIONS_UNAVAILABLE")),
+        ("order.cancel", {"ordersAvailable": False, "orderExists": False}, (None, "ORDERS_UNAVAILABLE")),
+        ("INTERNAL_ENTRY_MARKET", {"positionsAvailable": False, "dealsAvailable": True, "positionExists": True}, (None, "POSITIONS_UNAVAILABLE")),
+        ("INTERNAL_ENTRY_MARKET", {"positionsAvailable": True, "dealsAvailable": False, "positionExists": True}, (None, "DEALS_UNAVAILABLE")),
+    ],
+)
+def test_verdict_returns_unknown_when_relevant_domain_is_unavailable(kind: str, facts: dict, expected: tuple[None, str]) -> None:
+    assert verdict(kind, facts) == expected
+
+
+def test_verdict_empty_available_position_snapshot_proves_close_absent() -> None:
+    assert verdict("position.close", {"positionsAvailable": True, "positions": (), "positionExists": False}) == (True, None)
 
 
 # ===================================================================

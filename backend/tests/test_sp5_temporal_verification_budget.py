@@ -225,7 +225,7 @@ async def test_modify_delayed_convergence(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_exhausted_budget_retains_lock(tmp_path: Path) -> None:
-    """Verification budget exhausted → FAILED with lock retained."""
+    """Verification budget exhausted → EXECUTION_UNKNOWN with lock retained."""
     journal = Journal(tmp_path / "db.sqlite")
     bus = EventBus(journal)
     await bus.start()
@@ -243,7 +243,7 @@ async def test_exhausted_budget_retains_lock(tmp_path: Path) -> None:
         await asyncio.sleep(1.0)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
         assert row is not None
-        assert row[0] == "FAILED", f"expected FAILED, got {row[0]}"
+        assert row[0] == "EXECUTION_UNKNOWN", f"expected EXECUTION_UNKNOWN, got {row[0]}"
         assert pipeline.mutation_in_flight
     finally:
         pipeline._task.cancel()

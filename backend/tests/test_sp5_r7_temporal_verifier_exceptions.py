@@ -260,6 +260,6 @@ async def test_g_exception_ambiguity_retains_lock_and_emits_alert_on_hot_path() 
     pipeline._envelope = lambda *args, **kwargs: SimpleNamespace(type=args[1])
     record = SimpleNamespace(command_id="command", correlation_id="correlation")
     await pipeline._unknown_internal(record, "INTERNAL_ENTRY_MARKET", "entry:XAUUSDm", None, "OUTCOME_AMBIGUOUS", {"symbol": "XAUUSDm"})
-    assert transitions[-1] == ("FAILED", "OUTCOME_AMBIGUOUS")
+    assert transitions[-1] == ("EXECUTION_UNKNOWN", "OUTCOME_AMBIGUOUS")
     assert "entry:XAUUSDm" in pipeline._locks
     assert any(event.type == "alert.created" for event in events)

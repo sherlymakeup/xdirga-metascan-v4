@@ -1145,6 +1145,92 @@ async def test_bulk_close_all_no_magic_match_returns_completed(
 
 
 @pytest.mark.asyncio
+async def test_bulk_unavailable_inventory_stays_execution_unknown_with_lock(tmp_path: Path) -> None:
+    class UnavailableGateway(_BulkVerifyGateway):
+        def sweep_facts(self) -> asyncio.Future:
+            fut: asyncio.Future = asyncio.Future()
+            fut.set_result({"orders": None, "ordersAvailable": False, "ordersError": (1, "down"), "positions": ()})
+            return fut
+
+    pipeline, bus, journal = await _make_pipeline(tmp_path, UnavailableGateway())
+    try:
+        status = await pipeline.submit_transport(CommandRequest(kind="order.cancelAll"), idempotency_key="bulk-unavailable")
+        await asyncio.sleep(0.1)
+        row = await _read_command_state(journal, status.command_id)
+        events = _read_events(journal, bus.boot_id)
+        assert row is not None and row["state"] == "EXECUTION_UNKNOWN"
+        assert pipeline.mutation_in_flight
+        assert any(e["type"] == "alert.created" and e["command_id"] == status.command_id for e in events)
+    finally:
+        await pipeline.stop()
+        await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_emergency_executes_readable_orders_then_escalates_unreadable_positions(tmp_path: Path) -> None:
+    class PartialGateway(_BulkVerifyGateway):
+        def __init__(self) -> None:
+            super().__init__(sweep_orders=({"ticket": 1, "symbol": "EURUSD", "magic": 999, "volume": 0.1, "orderType": 2},))
+            self._sweeps = 0
+
+        def sweep_facts(self) -> asyncio.Future:
+            fut: asyncio.Future = asyncio.Future()
+            self._sweeps += 1
+            if self._sweeps == 1:
+                fut.set_result({"orders": self._sweep_orders, "ordersAvailable": True, "positions": None, "positionsAvailable": False, "positionsError": (2, "down")})
+            else:
+                fut.set_result({"orders": (), "ordersAvailable": True, "positions": None, "positionsAvailable": False, "positionsError": (2, "down")})
+            return fut
+
+    pipeline, bus, journal = await _make_pipeline(tmp_path, PartialGateway())
+    try:
+        status = await pipeline.submit_transport(CommandRequest(kind="runtime.emergencyKill"), idempotency_key="kill-partial")
+        await asyncio.sleep(0.2)
+        row = await _read_command_state(journal, status.command_id)
+        events = _read_events(journal, bus.boot_id)
+        assert row is not None and row["state"] == "EXECUTION_UNKNOWN"
+        assert pipeline.halted and not pipeline.entries_enabled and pipeline.mutation_in_flight
+        assert any(call["kind"] == "order.cancel" for call in pipeline._gateway.track.calls)
+        assert any(e["type"] == "safety.kill.failed" and e["command_id"] == status.command_id for e in events)
+        assert not any(e["type"] == "safety.kill.completed" and e["command_id"] == status.command_id for e in events)
+        assert any(e["type"] == "alert.created" and e["command_id"] == status.command_id for e in events)
+    finally:
+        await pipeline.stop()
+        await bus.close()
+
+
+@pytest.mark.asyncio
+async def test_emergency_executes_readable_positions_then_escalates_unreadable_orders(tmp_path: Path) -> None:
+    class PartialGateway(_BulkVerifyGateway):
+        def __init__(self) -> None:
+            super().__init__(sweep_positions=({"ticket": 101, "symbol": "EURUSD", "magic": 999, "volume": 0.1, "type": 0},))
+            self._sweeps = 0
+
+        def sweep_facts(self) -> asyncio.Future:
+            fut: asyncio.Future = asyncio.Future()
+            self._sweeps += 1
+            if self._sweeps == 2:
+                fut.set_result({"orders": None, "ordersAvailable": False, "ordersError": (1, "down"), "positions": self._sweep_positions, "positionsAvailable": True})
+            else:
+                fut.set_result({"orders": None, "ordersAvailable": False, "ordersError": (1, "down"), "positions": (), "positionsAvailable": True})
+            return fut
+
+    pipeline, bus, journal = await _make_pipeline(tmp_path, PartialGateway())
+    try:
+        status = await pipeline.submit_transport(CommandRequest(kind="runtime.emergencyKill"), idempotency_key="kill-partial-position")
+        await asyncio.sleep(0.2)
+        row = await _read_command_state(journal, status.command_id)
+        events = _read_events(journal, bus.boot_id)
+        assert row is not None and row["state"] == "EXECUTION_UNKNOWN"
+        assert any(call["kind"] == "position.close" for call in pipeline._gateway.track.calls)
+        assert any(e["type"] == "safety.kill.failed" and e["command_id"] == status.command_id for e in events)
+        assert not any(e["type"] == "safety.kill.completed" and e["command_id"] == status.command_id for e in events)
+    finally:
+        await pipeline.stop()
+        await bus.close()
+
+
+@pytest.mark.asyncio
 async def test_bulk_all_success_no_alert(tmp_path: Path) -> None:
     """All children succeed → parent COMPLETED, no alert.created."""
     sweep_orders = (

@@ -167,7 +167,7 @@ async def test_restart_recovery_delayed_convergence(tmp_path: Path) -> None:
         await asyncio.sleep(0.5)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
         assert row is not None
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
         assert pipeline1.mutation_in_flight
         assert pending1.has_pending_entry("XAUUSDm")
     finally:

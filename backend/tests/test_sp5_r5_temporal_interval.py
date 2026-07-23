@@ -66,7 +66,7 @@ async def test_negative_only_after_full_budget_exactly_at_deadline(tmp_path: Pat
         assert row[0] == "EXECUTION_UNKNOWN", f"expected EXECUTION_UNKNOWN at 0.3s (before deadline), got {row[0]}"
         await asyncio.sleep(0.8)
         row = journal.run_on_writer(lambda c: c.execute("SELECT state FROM commands WHERE command_id=?", (record.command_id,)).fetchone())
-        assert row[0] == "FAILED", f"expected FAILED after full budget deadline, got {row[0]}"
+        assert row[0] == "EXECUTION_UNKNOWN", f"expected EXECUTION_UNKNOWN after full budget deadline, got {row[0]}"
         assert pipeline.mutation_in_flight
     finally:
         pipeline._task.cancel()

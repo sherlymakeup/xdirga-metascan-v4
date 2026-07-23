@@ -365,43 +365,67 @@ class Mt5Gateway:
 
     def _sweep_facts_on_gateway_thread(self) -> dict[str, Any]:
         orders = self._mt5.orders_get()
+        orders_error = self._mt5.last_error() if orders is None else None
         positions = self._mt5.positions_get()
+        positions_error = self._mt5.last_error() if positions is None else None
         return {
-            "orders": tuple({"ticket": int(row.ticket), "symbol": str(row.symbol), "magic": int(row.magic), "volume": float(getattr(row, "volume_current", getattr(row, "volume", 0.0))), "orderType": int(row.type)} for row in (orders or ())),
-            "positions": tuple({"ticket": int(p.ticket), "symbol": str(p.symbol), "magic": int(p.magic), "volume": float(p.volume), "type": int(p.type)} for p in (positions or ())),
+            "orders": None if orders is None else tuple({"ticket": int(row.ticket), "symbol": str(row.symbol), "magic": int(row.magic), "volume": float(getattr(row, "volume_current", getattr(row, "volume", 0.0))), "orderType": int(row.type)} for row in orders),
+            "positions": None if positions is None else tuple({"ticket": int(p.ticket), "symbol": str(p.symbol), "magic": int(p.magic), "volume": float(p.volume), "type": int(p.type)} for p in positions),
+            "ordersAvailable": orders is not None,
+            "positionsAvailable": positions is not None,
+            "ordersError": orders_error,
+            "positionsError": positions_error,
         }
 
     def verify(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any]) -> concurrent.futures.Future:
         return self.submit_command(lambda: self._verify_on_gateway_thread(command_id, kind, target_id, request))
 
     def _verify_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any]) -> dict[str, Any]:
-        first_positions = tuple(self._mt5.positions_get() or ())
-        positions = tuple(self._mt5.positions_get() or ())
-        orders = tuple(self._mt5.orders_get() or ()) if hasattr(self._mt5, "orders_get") else ()
+        first_raw_positions = self._mt5.positions_get()
+        first_positions_error = self._mt5.last_error() if first_raw_positions is None else None
+        raw_positions = self._mt5.positions_get()
+        positions_error = self._mt5.last_error() if raw_positions is None else None
+        positions_available = first_raw_positions is not None and raw_positions is not None
+        first_positions = () if first_raw_positions is None else tuple(first_raw_positions)
+        positions = () if raw_positions is None else tuple(raw_positions)
+        raw_orders = self._mt5.orders_get() if hasattr(self._mt5, "orders_get") else ()
+        orders_error = self._mt5.last_error() if raw_orders is None else None
+        orders_available = raw_orders is not None
+        orders = () if raw_orders is None else tuple(raw_orders)
         ticket = int(target_id) if target_id and target_id.isdigit() else None
         current = next((p for p in positions if ticket is not None and int(p.ticket) == ticket), None)
         context = self._verification_context.get(command_id, {})
-        deals = ()
+        raw_deals: Any = ()
+        deals_error = None
         if hasattr(self._mt5, "history_deals_get"):
             now = datetime.datetime.now(datetime.timezone.utc)
-            deals = tuple(self._mt5.history_deals_get(now - datetime.timedelta(seconds=10), now) or ())
+            raw_deals = self._mt5.history_deals_get(now - datetime.timedelta(seconds=10), now)
+            deals_error = self._mt5.last_error() if raw_deals is None else None
+        deals_available = raw_deals is not None
+        deals = () if raw_deals is None else tuple(raw_deals)
         result: dict[str, Any] = {
-            "positionExists": current is not None if ticket is not None else None,
-            "orderExists": any(int(o.ticket) == ticket for o in orders) if ticket is not None else None,
+            "positionExists": current is not None if positions_available and ticket is not None else None,
+            "orderExists": any(int(o.ticket) == ticket for o in orders) if orders_available and ticket is not None else None,
             "positions": positions,
             "orders": orders,
             "deals": deals,
+            "positionsAvailable": positions_available,
+            "ordersAvailable": orders_available,
+            "dealsAvailable": deals_available,
+            "positionsError": positions_error or first_positions_error,
+            "ordersError": orders_error,
+            "dealsError": deals_error,
             "ticket": ticket,
             "pollCount": 2,
         }
         if kind == "position.closePartial":
             pre_volume = context.get("pre_volume")
-            post_volume = None if current is None else float(current.volume)
-            result.update(pre_volume=pre_volume, post_volume=post_volume, partial_executed=pre_volume is not None and post_volume is not None and post_volume < pre_volume)
+            post_volume = None if not positions_available or current is None else float(current.volume)
+            result.update(pre_volume=pre_volume, post_volume=post_volume, partial_executed=None if not positions_available else pre_volume is not None and post_volume is not None and post_volume < pre_volume)
         elif kind == "position.modifyProtection":
             expected_sl = context.get("expected_sl")
             expected_tp = context.get("expected_tp")
-            result["modify_executed"] = current is not None and (expected_sl is None or float(current.sl) == expected_sl) and (expected_tp is None or float(current.tp) == expected_tp)
+            result["modify_executed"] = None if not positions_available else current is not None and (expected_sl is None or float(current.sl) == expected_sl) and (expected_tp is None or float(current.tp) == expected_tp)
         elif kind == "INTERNAL_ENTRY_MARKET":
             resolved_order = context.get("order") or request.get("order")
             resolved_deal = context.get("deal") or request.get("deal")
@@ -416,7 +440,9 @@ class Mt5Gateway:
                 candidate = int(getattr(correlated_deal, "position_id", 0) or 0)
                 if any(int(p.ticket) == candidate and int(p.magic) == self._config.bot_magic for p in positions):
                     position_ticket = candidate
-            result.update(positionExists=position_ticket is not None, positionTicket=position_ticket, order=resolved_order, deal=resolved_deal)
+            if not positions_available or not deals_available:
+                position_ticket = None
+            result.update(positionExists=position_ticket is not None if positions_available and deals_available else None, positionTicket=position_ticket, order=resolved_order, deal=resolved_deal)
         return result
 
     def _mutation_on_gateway_thread(self, command_id: str, kind: str, target_id: str | None, request: dict[str, Any], reason: str) -> Any:

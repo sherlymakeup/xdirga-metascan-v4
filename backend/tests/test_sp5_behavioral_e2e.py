@@ -748,7 +748,7 @@ async def test_unknown_verifies_never_existed_releases_lock(tmp_path: Path) -> N
 
 
 @pytest.mark.asyncio
-async def test_unknown_verifies_unresolved_transitions_failed_retains_lock(tmp_path: Path) -> None:
+async def test_unknown_verifies_unresolved_retains_execution_unknown_and_lock(tmp_path: Path) -> None:
     journal = Journal(tmp_path / "db.sqlite")
     bus = EventBus(journal)
     await bus.start()
@@ -767,7 +767,7 @@ async def test_unknown_verifies_unresolved_transitions_failed_retains_lock(tmp_p
             "SELECT state, record_json FROM commands WHERE command_id=?", (status.command_id,)
         ).fetchone())
         assert row is not None
-        assert row[0] == "FAILED"
+        assert row[0] == "EXECUTION_UNKNOWN"
         record = __import__("json").loads(row[1])
         assert record.get("reason") == "OUTCOME_AMBIGUOUS"
         assert pipeline.mutation_in_flight
