@@ -56,7 +56,11 @@ export function TopStatusBar({ onToggleSidebar }: { onToggleSidebar?: () => void
   const brokerLatency = snap.broker.avgLatencyMs == null ? "—" : `${snap.broker.avgLatencyMs}ms`;
   const uptime = snap.runtime.uptimeSec == null ? "—" : fmtDuration(snap.runtime.uptimeSec);
   const healthTransition = events.find((event) => {
-    if (event.type !== "runtime.health.changed" || !event.payload || typeof event.payload !== "object") {
+    if (
+      event.type !== "runtime.health.changed" ||
+      !event.payload ||
+      typeof event.payload !== "object"
+    ) {
       return false;
     }
     return (event.payload as { state?: unknown }).state === snap.runtime.state;

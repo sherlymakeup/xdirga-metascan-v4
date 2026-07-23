@@ -108,6 +108,8 @@ const NavigationMenuIndicator = React.forwardRef<
 NavigationMenuIndicator.displayName = NavigationMenuPrimitive.Indicator.displayName;
 
 export {
+  // HMR warning only: the generated UI module co-locates its trigger style helper.
+  // eslint-disable-next-line react-refresh/only-export-components
   navigationMenuTriggerStyle,
   NavigationMenu,
   NavigationMenuList,

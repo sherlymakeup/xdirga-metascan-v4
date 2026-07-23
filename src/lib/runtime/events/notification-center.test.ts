@@ -8,10 +8,7 @@ vi.mock("react", async (importOriginal) => {
   };
 });
 
-import {
-  notificationCenter,
-  useActiveEventAlerts,
-} from "@/lib/runtime/events/notification-center";
+import { notificationCenter, useActiveEventAlerts } from "@/lib/runtime/events/notification-center";
 import type { RuntimeEventEnvelope } from "@/lib/runtime/events/event-types";
 import type { EventNotificationDecision } from "@/lib/runtime/events/notification-policy";
 

@@ -32,6 +32,8 @@ type SortDir = "asc" | "desc";
 
 const GROUPS: Group[] = ["ALL", "FX", "METALS", "INDICES", "CRYPTO"];
 
+// HMR warning only: sign-convention tests exercise the route's canonical projection.
+// eslint-disable-next-line react-refresh/only-export-components
 export function marketPulse(markets: MarketSymbol[]) {
   const groups: MarketSymbol["group"][] = ["FX", "METALS", "INDICES", "CRYPTO"];
   return groups.map((group) => {
@@ -133,7 +135,8 @@ function MarketsPage() {
 
   const toggleFav = (sym: string) => {
     const next = new Set(favs);
-    next.has(sym) ? next.delete(sym) : next.add(sym);
+    if (next.has(sym)) next.delete(sym);
+    else next.add(sym);
     setFavs(next);
   };
 

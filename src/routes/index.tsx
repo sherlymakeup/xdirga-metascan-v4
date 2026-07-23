@@ -60,7 +60,10 @@ export function CockpitPage() {
   const isDemo = getRuntimeMode() === "fixture";
   const eventAlerts = useActiveEventAlerts();
   const alerts = useMemo(
-    () => [...snap.alerts, ...eventAlerts.filter((event) => !snap.alerts.some((a) => a.id === event.id))],
+    () => [
+      ...snap.alerts,
+      ...eventAlerts.filter((event) => !snap.alerts.some((a) => a.id === event.id)),
+    ],
     [eventAlerts, snap.alerts],
   );
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);

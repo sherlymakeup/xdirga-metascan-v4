@@ -29,4 +29,6 @@ function Badge({ className, variant, ...props }: BadgeProps) {
   return <div className={cn(badgeVariants({ variant }), className)} {...props} />;
 }
 
+// HMR warning only: the generated UI module intentionally co-locates its variant helper.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Badge, badgeVariants };

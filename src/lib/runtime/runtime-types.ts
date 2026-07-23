@@ -115,13 +115,7 @@ export interface SnapshotMetadata {
  * @deprecated Use `EventSeverity` from `./events/runtime-event-envelope`.
  * Retained only for compatibility with pre-Phase-5F imports.
  */
-export type RuntimeEventSeverity =
-  | "TRACE"
-  | "DEBUG"
-  | "INFO"
-  | "WARNING"
-  | "ERROR"
-  | "CRITICAL";
+export type RuntimeEventSeverity = "TRACE" | "DEBUG" | "INFO" | "WARNING" | "ERROR" | "CRITICAL";
 
 // The authoritative envelope + event type catalog lives in
 // ./events/runtime-event-envelope. Re-exported here so legacy imports

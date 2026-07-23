@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import type { CockpitSnapshot } from "@/lib/types";
 import type { RuntimeConnectionStateSnapshot } from "@/lib/runtime/runtime-types";
+import type { NotificationEntry } from "@/lib/runtime/events/notification-center";
+import type { RuntimeEventEnvelope } from "@/lib/runtime/events/event-types";
 
 const mockSnapshotRef: { current: CockpitSnapshot } = {
   current: {} as CockpitSnapshot,
@@ -11,7 +13,10 @@ const mockConnectionRef: { current: RuntimeConnectionStateSnapshot } = {
 };
 const mockModeRef: { current: "fixture" | "http" } = { current: "http" };
 const mockHasValidatedSnapshotRef: { current: boolean } = { current: false };
-const mockNotificationsRef: { current: unknown[] } = { current: [] };
+type AlertNotificationEntry = Omit<NotificationEntry, "latest"> & {
+  latest: RuntimeEventEnvelope<{ id: string; title: string; acknowledged: boolean }>;
+};
+const mockNotificationsRef: { current: AlertNotificationEntry[] } = { current: [] };
 
 vi.mock("@/lib/runtime", () => ({
   getRuntimeMode: () => mockModeRef.current,
@@ -51,7 +56,7 @@ vi.mock("@/lib/runtime/events", () => ({
 
 vi.mock("@/lib/runtime/events/notification-center", () => ({
   useActiveEventAlerts: () =>
-    mockNotificationsRef.current.map((entry: any) => ({
+    mockNotificationsRef.current.map((entry) => ({
       id: entry.latest.payload.id,
       severity: entry.latest.severity,
       title: entry.latest.payload.title,
@@ -433,7 +438,14 @@ describe("rendered-behavior: dashboard loading skeleton", () => {
             acknowledged: false,
           },
         },
-        decision: { createAlert: true, priority: "CRITICAL" },
+        decision: {
+          showToast: true,
+          createAlert: true,
+          createIncidentCandidate: true,
+          playSound: false,
+          persistInNotificationCenter: true,
+          priority: "CRITICAL",
+        },
       },
     ];
 

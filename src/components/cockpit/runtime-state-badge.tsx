@@ -24,6 +24,8 @@ export function RuntimeStateBadge({ state, size }: { state: RuntimeState; size?:
   );
 }
 
+// HMR warning only: tests share the component's canonical state-to-tone mapping.
+// eslint-disable-next-line react-refresh/only-export-components
 export function runtimeTone(state: RuntimeState): StatusTone {
   return map[state].tone;
 }

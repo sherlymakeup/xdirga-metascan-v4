@@ -183,7 +183,9 @@ export function useActiveEventAlerts(): Alert[] {
               ? payload.reason
               : entry.latest.type,
         suggestedAction:
-          typeof payload.suggestedAction === "string" ? payload.suggestedAction : "Review alert details.",
+          typeof payload.suggestedAction === "string"
+            ? payload.suggestedAction
+            : "Review alert details.",
         acknowledged: false,
       };
     });

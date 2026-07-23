@@ -50,7 +50,6 @@ export function GlobalOperationalStateBanner() {
 }
 
 export function FixtureDiagnosticsPanel() {
-  if (import.meta.env.PROD) return null;
   const conn = useConnectionState();
   const handshake = useHandshake();
   const locks = useExecutionUnknownLocks();
@@ -58,6 +57,7 @@ export function FixtureDiagnosticsPanel() {
   const counts = useCommandCounts();
   const hydration = useApplicationHydration();
   const op = useGlobalOperationalState();
+  if (import.meta.env.PROD) return null;
 
   return (
     <div className="rounded-sm border border-panel-border bg-panel-elevated/60 p-3 text-[11px] text-muted-foreground">

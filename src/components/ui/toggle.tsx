@@ -39,4 +39,6 @@ const Toggle = React.forwardRef<
 
 Toggle.displayName = TogglePrimitive.Root.displayName;
 
+// HMR warning only: ToggleGroup shares the component's canonical variant helper.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Toggle, toggleVariants };

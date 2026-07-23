@@ -46,4 +46,6 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 );
 Button.displayName = "Button";
 
+// HMR warning only: consumers share the component's canonical variant helper.
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants };

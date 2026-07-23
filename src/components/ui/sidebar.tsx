@@ -740,5 +740,7 @@ export {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  // HMR warning only: this hook shares the sidebar module's private context.
+  // eslint-disable-next-line react-refresh/only-export-components
   useSidebar,
 };

@@ -57,7 +57,10 @@ function RuntimePage() {
                   </span>
                 }
               />
-              <KV label="Host" value={<span className="num">{snap.runtime.hostname ?? "—"}</span>} />
+              <KV
+                label="Host"
+                value={<span className="num">{snap.runtime.hostname ?? "—"}</span>}
+              />
               <KV
                 label="Heartbeat"
                 value={
